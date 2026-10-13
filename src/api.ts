@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   AppModel,
   CodegenResult,
+  DbQueryResult,
   FileContent,
   Problem,
   ProjectEntry,
@@ -13,10 +14,23 @@ export const api = {
   homeDir: () => invoke<string>("home_dir"),
   clientLog: (message: string) => invoke<void>("client_log", { message }),
   registryList: () => invoke<ProjectEntry[]>("registry_list"),
-  projectCreate: (kind: string, name: string, parentDir: string, packageName: string) =>
-    invoke<ProjectEntry>("project_create", { kind, name, parentDir, packageName }),
+  projectCreate: (
+    kind: string,
+    name: string,
+    parentDir: string,
+    packageName: string,
+    replaceFolder = false,
+  ) =>
+    invoke<ProjectEntry>("project_create", {
+      kind,
+      name,
+      parentDir,
+      packageName,
+      replaceFolder,
+    }),
   projectOpen: (path: string) => invoke<ProjectEntry>("project_open", { path }),
   projectForget: (path: string) => invoke<void>("project_forget", { path }),
+  projectDelete: (path: string) => invoke<void>("project_delete", { path }),
 
   tree: (path: string) => invoke<TreeNode[]>("fs_tree", { path }),
   readFile: (path: string) => invoke<FileContent>("fs_read", { path }),
@@ -26,14 +40,16 @@ export const api = {
   deletePath: (path: string) => invoke<void>("fs_delete", { path }),
   renamePath: (oldPath: string, newPath: string) => invoke<void>("fs_rename", { oldPath, newPath }),
 
-  modelLoad: (path: string) => invoke<AppModel>("model_load", { projectDir: path }),
-  modelSave: (path: string, model: AppModel) =>
+  modelLoad: (path: string) => invoke<AppModel>("model_load", { projectDir: path }),  modelSave: (path: string, model: AppModel) =>
     invoke<void>("model_save", { projectDir: path, model }),
   validate: (model: AppModel) => invoke<Problem[]>("validate_model", { model }),
 
   codegen: (path: string) => invoke<CodegenResult>("codegen_generate", { projectDir: path }),
   dbRecreate: (path: string, model: AppModel, dropExisting: boolean) =>
     invoke<string[]>("db_recreate", { projectDir: path, model, dropExisting }),
+  dbSql: (path: string, sql: string) =>
+    invoke<DbQueryResult>("db_sql", { projectDir: path, sql }),
+  dbDdl: (path: string) => invoke<string[]>("db_ddl", { projectDir: path }),
 
   runStart: (path: string) => invoke<void>("run_start", { projectDir: path }),
   runStop: () => invoke<void>("run_stop"),

@@ -61,6 +61,53 @@ pub enum ComponentType {
     #[serde(alias = "spinner")]
     #[serde(alias = "jspinner")]
     JSpinner,
+    #[serde(rename = "JToggleButton")]
+    #[serde(alias = "togglebutton")]
+    #[serde(alias = "jtogglebutton")]
+    JToggleButton,
+    #[serde(rename = "JSeparator")]
+    #[serde(alias = "separator")]
+    #[serde(alias = "jseparator")]
+    JSeparator,
+    #[serde(rename = "JSlider")]
+    #[serde(alias = "slider")]
+    #[serde(alias = "jslider")]
+    JSlider,
+    #[serde(rename = "JScrollBar")]
+    #[serde(alias = "scrollbar")]
+    #[serde(alias = "jscrollbar")]
+    JScrollBar,
+    #[serde(rename = "JTextPane")]
+    #[serde(alias = "textpane")]
+    #[serde(alias = "jtextpane")]
+    JTextPane,
+    #[serde(rename = "JEditorPane")]
+    #[serde(alias = "editorpane")]
+    #[serde(alias = "jeditorpane")]
+    JEditorPane,
+    #[serde(rename = "JToolBar")]
+    #[serde(alias = "toolbar")]
+    #[serde(alias = "jtoolbar")]
+    JToolBar,
+    #[serde(rename = "JTree")]
+    #[serde(alias = "tree")]
+    #[serde(alias = "jtree")]
+    JTree,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuItemSpec {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuSpec {
+    pub id: String,
+    pub label: String,
+    pub items: Vec<MenuItemSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,6 +128,12 @@ pub struct ColumnSpec {
     pub pk: bool,
     pub not_null: bool,
     pub auto_increment: bool,
+    /// Tabela referenciada pela chave estrangeira (vazio = sem relação).
+    #[serde(default)]
+    pub refs_table: String,
+    /// Coluna referenciada dentro de `refs_table`.
+    #[serde(default)]
+    pub refs_column: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +202,8 @@ pub struct WindowSpec {
     pub width: f64,
     pub height: f64,
     pub components: Vec<ComponentSpec>,
+    #[serde(default)]
+    pub menu: Vec<MenuSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -298,4 +353,13 @@ pub struct Problem {
 pub struct CodegenResult {
     pub files: Vec<String>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbQueryResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub affected: Option<usize>,
+    pub error: Option<String>,
 }

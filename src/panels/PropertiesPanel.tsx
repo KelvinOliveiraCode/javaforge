@@ -1,5 +1,5 @@
 import { catalogOf } from "../catalog";
-import { findWindow } from "../model-ops";
+import { findWindow, addMenu, addMenuItem, removeMenu, removeMenuItem } from "../model-ops";
 import {
   deleteComponent,
   duplicateComponent,
@@ -8,6 +8,7 @@ import {
   updateComponentProps,
   updateWindow,
 } from "../actions";
+import { patchModel } from "../actions";
 import { useStore } from "../store";
 import type { PropFieldSpec } from "../catalog";
 
@@ -52,10 +53,66 @@ export default function PropertiesPanel() {
             />
           </div>
         </div>
+
+        <div className="props-title">Menus da janela</div>
+        <div className="conn-list">
+          {(win.menu ?? []).map((m) => (
+            <div className="conn-card" key={m.id}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  className="input mono"
+                  value={m.label}
+                  onChange={(e) => patchModel((mm) => { const w = findWindow(mm, win.id); const menu = w?.menu.find((x) => x.id === m.id); if (menu) menu.label = e.target.value; })}
+                />
+                <button
+                  className="btn ghost icon sm"
+                  aria-label="Remover menu"
+                  onClick={() => patchModel((mm) => removeMenu(mm, win.id, m.id))}
+                >
+                  ×
+                </button>
+              </div>
+              {m.items.map((item) => (
+                <div key={item.id} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+                  <input
+                    className="input mono"
+                    value={item.label}
+                    onChange={(e) =>
+                      patchModel((mm) => {
+                        const w = findWindow(mm, win.id);
+                        const menu = w?.menu.find((x) => x.id === m.id);
+                        const it = menu?.items.find((x) => x.id === item.id);
+                        if (it) it.label = e.target.value;
+                      })
+                    }
+                  />
+                  <button
+                    className="btn ghost icon sm"
+                    aria-label="Remover item"
+                    onClick={() => patchModel((mm) => removeMenuItem(mm, win.id, m.id, item.id))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                className="btn sm"
+                style={{ marginTop: 6 }}
+                onClick={() => patchModel((mm) => addMenuItem(mm, win.id, m.id))}
+              >
+                + Item
+              </button>
+            </div>
+          ))}
+          <button className="btn sm" onClick={() => patchModel((mm) => addMenu(mm, win.id))}>
+            + Menu
+          </button>
+        </div>
+
         <div className="props-title">Dica</div>
         <p className="panel-hint" style={{ padding: "0 10px 10px" }}>
           Clique em um componente na tela para editar suas propriedades aqui. Arraste da paleta para
-          adicionar novos.
+          adicionar novos. Itens de menu aceitam conexões (clique em um item na aba Conexões).
         </p>
       </div>
     );

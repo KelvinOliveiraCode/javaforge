@@ -1,4 +1,4 @@
-use crate::util::SQLITE_JAR_BYTES;
+use crate::util::{build_dir, ensure_driver_jar};
 use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -34,6 +34,14 @@ fn which_mvn() -> Option<PathBuf> {
             return Some(p);
         }
     }
+    // installations usuais do Maven no Windows: usar antes do wrapper evita
+    // baixar o Maven da internet em uma máquina sem rede
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let p = PathBuf::from(local).join("JavaForge").join("maven").join("bin").join("mvn.cmd");
+        if p.exists() {
+            return Some(p);
+        }
+    }
     let path = std::env::var("PATH").ok()?;
     for dir in path.split(';') {
         if dir.is_empty() {
@@ -43,6 +51,50 @@ fn which_mvn() -> Option<PathBuf> {
             let p = PathBuf::from(dir).join(name);
             if p.exists() {
                 return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Procura um Maven já instalado no computador (sem baixar nada).
+///
+/// Sem isto, uma máquina sem internet falharia no botão Rodar: o Maven Wrapper
+/// tenta baixar a distribuição do Maven no primeiro uso.
+fn find_local_maven() -> Option<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        roots.push(PathBuf::from(local).join("JavaForge").join("maven"));
+    }
+    for env in ["PROGRAMFILES", "PROGRAMFILES(X86)", "USERPROFILE"] {
+        if let Ok(dir) = std::env::var(env) {
+            let dir = PathBuf::from(dir);
+            roots.push(dir.join("apache-maven"));
+            if env == "USERPROFILE" {
+                roots.push(dir.join("tools").join("maven"));
+                roots.push(dir.join(".m2").join("wrapper").join("dists"));
+            }
+        }
+    }
+    for root in roots {
+        if !root.is_dir() {
+            continue;
+        }
+        // versão única direta (ex.: C:\tools\maven\bin\mvn.cmd)
+        let direto = root.join("bin").join("mvn.cmd");
+        if direto.exists() {
+            return Some(direto);
+        }
+        // com subpastas por versão (ex.: C:\apache-maven\maven-3.9.9\bin\mvn.cmd)
+        if let Ok(read) = fs::read_dir(&root) {
+            let mut candidatos: Vec<PathBuf> = read
+                .flatten()
+                .map(|e| e.path().join("bin").join("mvn.cmd"))
+                .filter(|p| p.exists())
+                .collect();
+            candidatos.sort();
+            if let Some(last) = candidatos.pop() {
+                return Some(last);
             }
         }
     }
@@ -162,15 +214,11 @@ fn run_javac(
     if javas.is_empty() {
         return Err("Nenhum arquivo Java em src/. Gere o código primeiro.".to_string());
     }
-    let jar = project.join("lib").join("sqlite-jdbc.jar");
-    if !jar.exists() {
-        fs::create_dir_all(project.join("lib")).ok();
-        fs::write(&jar, SQLITE_JAR_BYTES).map_err(|e| e.to_string())?;
-    }
+    let jar = ensure_driver_jar(project).map_err(|e| e.to_string())?;
     let javac = crate::commands::resolve_javac()
         .ok_or_else(|| "javac não encontrado. Instale o JDK 17+ ou o Maven.".to_string())?;
 
-    let out_dir = project.join(".javaforge").join("out");
+    let out_dir = build_dir(project).join("out");
     let _ = fs::remove_dir_all(&out_dir);
     fs::create_dir_all(&out_dir).ok();
 
@@ -237,6 +285,15 @@ pub fn run_start(
             .current_dir(&project);
         return spawn_and_track(&app, &slot, cmd, "Maven");
     }
+    // Maven já instalado fora do PATH: melhor que o wrapper, que baixaria
+    // a distribuição do Maven da internet.
+    if let Some(mvn) = find_local_maven() {
+        emit(&app, "sys", "> compilando e executando com Maven local");
+        let mut cmd = Command::new(mvn);
+        cmd.args(["-q", "-B", "compile", "exec:java"])
+            .current_dir(&project);
+        return spawn_and_track(&app, &slot, cmd, "Maven local");
+    }
     let mvnw = project.join("mvnw.cmd");
     if mvnw.exists() {
         emit(&app, "sys", "> executando via Maven Wrapper");
@@ -245,6 +302,7 @@ pub fn run_start(
             .current_dir(&project);
         return spawn_and_track(&app, &slot, cmd, "Maven Wrapper");
     }
+    emit(&app, "sys", "> Maven não encontrado; compilando com javac");
     run_javac(&app, &slot, &project)
 }
 

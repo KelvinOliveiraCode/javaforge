@@ -53,20 +53,20 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
 
     files.push(GeneratedFile {
         path: format!("src/main/java/{}/Main.java", pkg_path),
-        content: gen_main(model, &main_class),
+        content: gen_main(model, &main_class, &class_names),
     });
     files.push(GeneratedFile {
-        path: format!("src/main/java/{}/Schema.java", pkg_path),
+        path: format!("src/main/java/{}/db/Schema.java", pkg_path),
         content: gen_schema(model),
     });
     files.push(GeneratedFile {
-        path: format!("src/main/java/{}/Database.java", pkg_path),
+        path: format!("src/main/java/{}/db/Database.java", pkg_path),
         content: gen_database(model, &plan),
     });
 
     for (idx, win) in model.windows.iter().enumerate() {
         files.push(GeneratedFile {
-            path: format!("src/main/java/{}/{}.java", pkg_path, class_names[idx]),
+            path: format!("src/main/java/{}/ui/{}.java", pkg_path, class_names[idx]),
             content: gen_window(model, win, &class_names, &plan, &mut warnings),
         });
     }
@@ -81,7 +81,7 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
     });
     files.push(GeneratedFile {
         path: ".gitignore".to_string(),
-        content: "target/\n.javaforge/\n*.class\n".to_string(),
+        content: "target/\nbuild/\ndata/\n*.class\n*.db\n".to_string(),
     });
     files.push(GeneratedFile {
         path: "mvnw".to_string(),
@@ -124,6 +124,8 @@ fn is_param_source(c: &ComponentSpec) -> bool {
             | ComponentType::JComboBox
             | ComponentType::JList
             | ComponentType::JSpinner
+            | ComponentType::JToggleButton
+            | ComponentType::JSlider
     )
 }
 
@@ -135,9 +137,11 @@ fn read_expr(comp: &ComponentSpec) -> String {
         ComponentType::JCheckBox | ComponentType::JRadioButton => {
             format!("String.valueOf({}.isSelected())", v)
         }
+        ComponentType::JToggleButton => format!("String.valueOf({}.isSelected())", v),
         ComponentType::JComboBox => format!("String.valueOf({}.getSelectedItem())", v),
         ComponentType::JList => format!("String.valueOf({}.getSelectedValue())", v),
         ComponentType::JSpinner => format!("String.valueOf({}.getValue())", v),
+        ComponentType::JSlider => format!("String.valueOf({}.getValue())", v),
         _ => String::new(),
     }
 }
@@ -204,6 +208,37 @@ fn unique_vars<'a>(
         .collect()
 }
 
+/// Nomes únicos para uma atualização: a mesma coluna pode aparecer nos campos a
+/// alterar e no filtro, e cada lado precisa de um nome diferente.
+fn unique_update_vars<'a>(
+    s: &[(&'a ColumnSpec, &'a ComponentSpec, &'a ParamSpec)],
+    w: &[(&'a ColumnSpec, &'a ComponentSpec, &'a ParamSpec)],
+) -> (
+    Vec<(String, &'a ColumnSpec, &'a ComponentSpec)>,
+    Vec<(String, &'a ColumnSpec, &'a ComponentSpec)>,
+) {
+    let mut used: Vec<String> = Vec::new();
+    let take = |base: String, used: &mut Vec<String>| -> String {
+        let mut name = base.clone();
+        let mut n = 2;
+        while used.contains(&name) {
+            name = format!("{}{}", base, n);
+            n += 1;
+        }
+        used.push(name.clone());
+        name
+    };
+    let svars = s
+        .iter()
+        .map(|(col, comp, _)| (take(camel_case(&col.name), &mut used), *col, *comp))
+        .collect();
+    let wvars = w
+        .iter()
+        .map(|(col, comp, _)| (take(camel_case(&col.name), &mut used), *col, *comp))
+        .collect();
+    (svars, wvars)
+}
+
 fn setter_call(col: &ColumnSpec, idx: usize, expr: &str, like: bool) -> String {
     let value = match (col.col_type.clone(), like) {
         (SqlType::Text, true) | (SqlType::Blob, true) => {
@@ -239,11 +274,17 @@ fn java_quotes(s: &str) -> String {
 
 // ------------------------------------------------------------- Main / Schema --
 
-fn gen_main(model: &AppModel, main_class: &str) -> String {
+fn gen_main(model: &AppModel, main_class: &str, class_names: &[String]) -> String {
+    let pkg = &model.package_name;
+    let mut imports = format!("import {}.db.Database;", pkg);
+    for cls in class_names {
+        imports.push_str(&format!("\nimport {}.ui.{};", pkg, cls));
+    }
     format!(
         r#"package {pkg};
 
 import javax.swing.SwingUtilities;
+{imports}
 
 public final class Main {{
 
@@ -263,8 +304,9 @@ public final class Main {{
     }}
 }}
 "#,
-        pkg = model.package_name,
-        cls = main_class
+        pkg = pkg,
+        cls = main_class,
+        imports = imports
     )
 }
 
@@ -284,6 +326,14 @@ fn ddl_column(col: &ColumnSpec) -> String {
     }
     if col.not_null {
         out = format!("{} NOT NULL", out);
+    }
+    if !col.refs_table.trim().is_empty() {
+        let target = if col.refs_column.trim().is_empty() {
+            "id".to_string()
+        } else {
+            col.refs_column.clone()
+        };
+        out = format!(r#"{} REFERENCES "{}" ("{}")"#, out, col.refs_table, target);
     }
     out
 }
@@ -368,7 +418,7 @@ fn gen_schema(model: &AppModel) -> String {
     };
 
     format!(
-        r#"package {pkg};
+        r#"package {pkg}.db;
 
 public final class Schema {{
 
@@ -392,16 +442,23 @@ public final class Schema {{
 
 // ------------------------------------------------------------------ Database --
 
+/// Janela dona de uma conexão: o componente pode ser um item de menu.
+fn window_of_conn<'a>(model: &'a AppModel, conn: &ConnectionSpec) -> Option<&'a WindowSpec> {
+    model.windows.iter().find(|w| {
+        w.components.iter().any(|c| c.id == conn.component_id)
+            || w.menu
+                .iter()
+                .flat_map(|m| m.items.iter())
+                .any(|i| i.id == conn.component_id)
+    })
+}
+
 fn plan_database(model: &AppModel, warnings: &mut Vec<String>) -> Vec<DbMethod> {
     let mut methods: Vec<DbMethod> = Vec::new();
     let mut used: Vec<String> = Vec::new();
 
     for conn in &model.connections {
-        let Some(window) = model
-            .windows
-            .iter()
-            .find(|w| w.components.iter().any(|c| c.id == conn.component_id))
-        else {
+        let Some(window) = window_of_conn(model, conn) else {
             continue;
         };
         let code: Option<(String, String)> = match conn.kind {
@@ -511,8 +568,7 @@ fn plan_database(model: &AppModel, warnings: &mut Vec<String>) -> Vec<DbMethod> 
                 if s.is_empty() || w.is_empty() {
                     continue;
                 }
-                let svars = unique_vars(&s);
-                let wvars = unique_vars(&w);
+                let (svars, wvars) = unique_update_vars(&s, &w);
                 let mut idx = 0usize;
                 let mut binds: Vec<String> = Vec::new();
                 for (v, col, _) in &svars {
@@ -796,7 +852,7 @@ fn gen_database(model: &AppModel, plan: &[DbMethod]) -> String {
     }
 
     format!(
-        r#"package {pkg};
+        r#"package {pkg}.db;
 
 {imports}
 
@@ -805,6 +861,15 @@ public final class Database {{
     public static final String URL = "jdbc:sqlite:{db}";
 
     static {{
+        try {{
+            // garante que a pasta do banco exista (ex.: data/)
+            java.nio.file.Path pasta = java.nio.file.Paths.get(URL.replace("jdbc:sqlite:", "")).getParent();
+            if (pasta != null) {{
+                java.nio.file.Files.createDirectories(pasta);
+            }}
+        }} catch (java.io.IOException ex) {{
+            throw new ExceptionInInitializerError(ex);
+        }}
         try {{
             Class.forName("org.sqlite.JDBC");
         }} catch (ClassNotFoundException ex) {{
@@ -879,12 +944,21 @@ fn catalog_entry(comp: &ComponentSpec) -> CatalogMeta {
         ComponentType::JScrollPane => CatalogMeta { java_type: "JScrollPane", import: "javax.swing.JScrollPane" },
         ComponentType::JProgressBar => CatalogMeta { java_type: "JProgressBar", import: "javax.swing.JProgressBar" },
         ComponentType::JSpinner => CatalogMeta { java_type: "JSpinner", import: "javax.swing.JSpinner" },
+        ComponentType::JToggleButton => CatalogMeta { java_type: "JToggleButton", import: "javax.swing.JToggleButton" },
+        ComponentType::JSeparator => CatalogMeta { java_type: "JSeparator", import: "javax.swing.JSeparator" },
+        ComponentType::JSlider => CatalogMeta { java_type: "JSlider", import: "javax.swing.JSlider" },
+        ComponentType::JScrollBar => CatalogMeta { java_type: "JScrollBar", import: "javax.swing.JScrollBar" },
+        ComponentType::JTextPane => CatalogMeta { java_type: "JTextPane", import: "javax.swing.JTextPane" },
+        ComponentType::JEditorPane => CatalogMeta { java_type: "JEditorPane", import: "javax.swing.JEditorPane" },
+        ComponentType::JToolBar => CatalogMeta { java_type: "JToolBar", import: "javax.swing.JToolBar" },
+        ComponentType::JTree => CatalogMeta { java_type: "JTree", import: "javax.swing.JTree" },
     }
 }
 
 fn scroll_owner(comp: &ComponentSpec) -> Option<String> {
     match comp.comp_type {
-        ComponentType::JTextArea | ComponentType::JList | ComponentType::JTable => {
+        ComponentType::JTextArea | ComponentType::JList | ComponentType::JTable
+        | ComponentType::JTextPane | ComponentType::JEditorPane | ComponentType::JTree => {
             Some(format!("scroll{}", pascal_case(&comp.id)))
         }
         _ => None,
@@ -1028,6 +1102,80 @@ fn gen_window(
             ComponentType::JScrollPane => {
                 lines.push(format!("{} = new JScrollPane();", var));
             }
+            ComponentType::JToggleButton => {
+                lines.push(format!(
+                    r#"{} = new JToggleButton("{}", {});"#,
+                    var,
+                    java_string_literal(&comp.prop_str("text", "")),
+                    comp.prop_bool("selected", false)
+                ));
+            }
+            ComponentType::JSeparator => {
+                lines.push(format!("{} = new JSeparator();", var));
+                if comp.prop_str("orientation", "horizontal").eq_ignore_ascii_case("vertical") {
+                    lines.push(format!(
+                        "{}.setOrientation(javax.swing.SwingConstants.VERTICAL);",
+                        var
+                    ));
+                }
+            }
+            ComponentType::JSlider => {
+                lines.push(format!(
+                    "{} = new JSlider({}, {}, {});",
+                    var,
+                    comp.prop_num("min", 0.0) as i64,
+                    comp.prop_num("max", 100.0) as i64,
+                    comp.prop_num("value", 50.0) as i64
+                ));
+            }
+            ComponentType::JScrollBar => {
+                lines.push(format!(
+                    "{} = new javax.swing.JScrollBar(javax.swing.JScrollBar.HORIZONTAL, {}, 10, {}, {});",
+                    var,
+                    comp.prop_num("value", 0.0) as i64,
+                    comp.prop_num("min", 0.0) as i64,
+                    comp.prop_num("max", 100.0) as i64
+                ));
+            }
+            ComponentType::JTextPane | ComponentType::JEditorPane => {
+                lines.push(format!("{} = new {}();", var, meta.java_type));
+                let text = comp.prop_str("text", "");
+                if !text.trim().is_empty() {
+                    lines.push(format!("{}.setText(\"{}\");", var, java_string_literal(&text)));
+                }
+                lines.push(format!("JScrollPane {} = new JScrollPane({});", owner, var));
+                push_import(&mut imports, "javax.swing.JScrollPane");
+            }
+            ComponentType::JToolBar => {
+                lines.push(format!("{} = new JToolBar();", var));
+                lines.push(format!("{}.setFloatable(false);", var));
+            }
+            ComponentType::JTree => {
+                lines.push(format!(
+                    "{} = new JTree();",
+                    var
+                ));
+                lines.push(format!(
+                    "javax.swing.tree.DefaultMutableTreeNode raiz{} = new javax.swing.tree.DefaultMutableTreeNode(\"{}\");",
+                    pascal_case(&comp.id),
+                    java_string_literal(&comp.prop_str("root", "Raiz"))
+                ));
+                lines.push(format!(
+                    "raiz{}.add(new javax.swing.tree.DefaultMutableTreeNode(\"Item 1\"));",
+                    pascal_case(&comp.id)
+                ));
+                lines.push(format!(
+                    "raiz{}.add(new javax.swing.tree.DefaultMutableTreeNode(\"Item 2\"));",
+                    pascal_case(&comp.id)
+                ));
+                lines.push(format!(
+                    "{}.setModel(new javax.swing.tree.DefaultTreeModel(raiz{}));",
+                    var,
+                    pascal_case(&comp.id)
+                ));
+                lines.push(format!("JScrollPane {} = new JScrollPane({});", owner, var));
+                push_import(&mut imports, "javax.swing.JScrollPane");
+            }
             ComponentType::JProgressBar => {
                 lines.push(format!(
                     "{} = new JProgressBar({}, {});",
@@ -1076,7 +1224,14 @@ fn gen_window(
     let conns: Vec<&ConnectionSpec> = model
         .connections
         .iter()
-        .filter(|c| window.components.iter().any(|w| w.id == c.component_id))
+        .filter(|c| {
+            window.components.iter().any(|w| w.id == c.component_id)
+                || window
+                    .menu
+                    .iter()
+                    .flat_map(|m| m.items.iter())
+                    .any(|i| i.id == c.component_id)
+        })
         .collect();
 
     let needs_sql = conns.iter().any(|c| {
@@ -1091,7 +1246,10 @@ fn gen_window(
     });
     if !conns.is_empty() {
         push_import(&mut imports, "javax.swing.JOptionPane");
+        // as telas vivem em <pacote>.ui; o acesso ao banco em <pacote>.db
+        push_import(&mut imports, &format!("{}.db.Database", model.package_name));
     }
+    // as telas vivem em <pacote>.ui e enxergam as outras telas sem import
     if needs_sql {
         push_import(&mut imports, "java.sql.SQLException");
     }
@@ -1100,7 +1258,16 @@ fn gen_window(
     let mut methods: Vec<String> = Vec::new();
     let mut used_handlers: Vec<String> = Vec::new();
 
+    // conexões de componentes (com ligação de listener no construtor)
     for conn in &conns {
+        if window
+            .menu
+            .iter()
+            .flat_map(|m| m.items.iter())
+            .any(|i| i.id == conn.component_id)
+        {
+            continue;
+        }
         let Some(comp) = comp_in(window, &conn.component_id) else { continue };
         let handler = unique(&mut used_handlers, format!("on{}", pascal_case(&comp.id)));
         wiring.push(format!("        {}", wiring_line(comp, &conn.event, &handler)));
@@ -1108,6 +1275,45 @@ fn gen_window(
         if !method.trim().is_empty() {
             methods.push(method);
         }
+    }
+
+    // conexões de itens de menu (ligação feita no bloco do menu)
+    let mut menu_lines: Vec<String> = Vec::new();
+    if !window.menu.is_empty() {
+        push_import(&mut imports, "javax.swing.JMenuBar");
+        push_import(&mut imports, "javax.swing.JMenu");
+        push_import(&mut imports, "javax.swing.JMenuItem");
+        menu_lines.push("        JMenuBar barraMenu = new JMenuBar();".to_string());
+        for menu in &window.menu {
+            let mvar = java_ident(&menu.id, "menu");
+            menu_lines.push(format!(
+                "        JMenu {} = new JMenu(\"{}\");",
+                mvar,
+                java_string_literal(&menu.label)
+            ));
+            for item in &menu.items {
+                let ivar = java_ident(&item.id, "item");
+                menu_lines.push(format!(
+                    "        JMenuItem {} = new JMenuItem(\"{}\");",
+                    ivar,
+                    java_string_literal(&item.label)
+                ));
+                if let Some(conn) = conns.iter().find(|c| c.component_id == item.id) {
+                    let handler = unique(&mut used_handlers, format!("on{}", pascal_case(&item.id)));
+                    menu_lines.push(format!(
+                        "        {}.addActionListener(e -> {}());",
+                        ivar, handler
+                    ));
+                    let method = gen_conn_method(model, window, conn, &handler, class_names, plan, warnings);
+                    if !method.trim().is_empty() {
+                        methods.push(method);
+                    }
+                }
+                menu_lines.push(format!("        {}.add({});", mvar, ivar));
+            }
+            menu_lines.push(format!("        barraMenu.add({});", mvar));
+        }
+        menu_lines.push("        setJMenuBar(barraMenu);".to_string());
     }
 
     imports.sort();
@@ -1125,7 +1331,7 @@ fn gen_window(
         .unwrap_or_else(|| "JanelaWindow".to_string());
 
     format!(
-        r#"package {pkg};
+        r#"package {pkg}.ui;
 
 {imports}
 
@@ -1144,6 +1350,7 @@ public class {cls} extends JFrame {{
 
 {init}
 {groups}
+{menu}
 {wiring}
     }}
 
@@ -1166,6 +1373,11 @@ public class {cls} extends JFrame {{
             String::new()
         } else {
             format!("\n{}\n", group_lines.join("\n"))
+        },
+        menu = if menu_lines.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}\n", menu_lines.join("\n"))
         },
         wiring = if wiring.is_empty() {
             String::new()
@@ -1217,6 +1429,7 @@ fn wiring_line(comp: &ComponentSpec, event: &str, handler: &str) -> String {
             var = var,
             handler = handler
         ),
+        "stateChanged" => format!("{}.addChangeListener(e -> {}());", var, handler),
         _ => format!("// evento {} não suportado em {}", event, var),
     }
 }
@@ -1410,8 +1623,7 @@ fn gen_conn_method(
                 ));
                 return String::new();
             }
-            let svars = unique_vars(&s);
-            let wvars = unique_vars(&w);
+            let (svars, wvars) = unique_update_vars(&s, &w);
             let mut all = svars.clone();
             all.extend(wvars.clone());
             let decls = all
@@ -1678,11 +1890,12 @@ java -jar target/{artifact}.jar
 ## Estrutura
 
 - `src/main/java/.../Main.java` - ponto de entrada
-- `src/main/java/.../Database.java` - acesso ao SQLite e métodos das conexões
-- `src/main/java/.../Schema.java` - criação das tabelas e dados iniciais
-- `src/main/java/.../*Window.java` - telas (janelas Swing)
+- `src/main/java/.../db/Database.java` - acesso ao SQLite e métodos das conexões
+- `src/main/java/.../db/Schema.java` - criação das tabelas e dados iniciais
+- `src/main/java/.../ui/*Window.java` - telas (janelas Swing)
+- `data/{db}` - banco de dados SQLite, criado automaticamente no primeiro uso
+- `build/` - pasta de trabalho do JavaForge (driver, ferramentas e classes geradas)
 - `app.model.json` - modelo visual usado pelo JavaForge (janelas, componentes e conexões)
-- `{db}` - banco de dados SQLite, criado automaticamente no primeiro uso
 
 ## Editando fora do JavaForge
 

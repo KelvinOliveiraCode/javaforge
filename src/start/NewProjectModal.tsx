@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createProject } from "../actions";
 import { api } from "../api";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 interface Props {
   kind: string;
@@ -21,6 +22,21 @@ const TEMPLATES = [
     desc: "Pesquisar, salvar, atualizar e excluir registros de uma tabela, com dados de exemplo já carregados.",
   },
   {
+    kind: "tarefas",
+    name: "Lista de tarefas",
+    desc: "Adicionar, renomear, excluir e listar tarefas. Junta consulta, inserção, atualização e exclusão em uma tela só.",
+  },
+  {
+    kind: "contatos",
+    name: "Agenda de contatos",
+    desc: "Cadastro curto com nome, telefone e e-mail: salvar, pesquisar por nome e excluir.",
+  },
+  {
+    kind: "calculadora",
+    name: "Calculadora",
+    desc: "Sem banco de dados: o botão Calcular roda o código Java que você escreveu. Bom para aprender código manual.",
+  },
+  {
     kind: "blank",
     name: "Aplicativo em branco",
     desc: "Uma janela vazia para montar a interface do zero, com o projeto Maven completo.",
@@ -32,6 +48,11 @@ export default function NewProjectModal({ kind, onKindChange, onClose }: Props) 
   const [packageName, setPackageName] = useState("com.exemplo.app");
   const [parentDir, setParentDir] = useState("");
   const [busy, setBusy] = useState(false);
+  const [substituir, setSubstituir] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+
+  // mesmo nome de pasta que o Rust calcula, para o aviso ficar exato
+  const sugestaoDePasta = name.trim().replace(/[^\w\-. ]+/g, "-").replace(/^[\s.-]+|[\s.-]+$/g, "") || "meu-app";
 
   useEffect(() => {
     api
@@ -49,12 +70,12 @@ export default function NewProjectModal({ kind, onKindChange, onClose }: Props) 
     if (typeof picked === "string") setParentDir(picked);
   };
 
-  const create = async () => {
+  const criar = async () => {
     if (!parentDir) {
       return;
     }
     setBusy(true);
-    const ok = await createProject(kind, name, parentDir, packageName);
+    const ok = await createProject(kind, name, parentDir, packageName, substituir);
     setBusy(false);
     if (ok) onClose();
   };
@@ -124,6 +145,15 @@ export default function NewProjectModal({ kind, onKindChange, onClose }: Props) 
               ))}
             </div>
           </div>
+
+          <label className="checkline warn" title="Só use se tiver certeza: os arquivos antigos são apagados">
+            <input
+              type="checkbox"
+              checked={substituir}
+              onChange={(e) => setSubstituir(e.target.checked)}
+            />
+            Substituir a pasta se já existir (apaga os arquivos antigos)
+          </label>
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>
@@ -132,12 +162,31 @@ export default function NewProjectModal({ kind, onKindChange, onClose }: Props) 
           <button
             className="btn primary"
             disabled={busy || !parentDir || !name.trim() || !packageName.trim()}
-            onClick={create}
+            onClick={() => {
+              if (substituir) {
+                setConfirmando(true);
+                return;
+              }
+              void criar();
+            }}
           >
             {busy ? "Criando..." : "Criar projeto"}
           </button>
         </div>
       </div>
+      {confirmando ? (
+        <ConfirmDialog
+          title="Substituir a pasta existente?"
+          message={`A pasta "${sugestaoDePasta}" em ${parentDir} já existe. Substituir apaga TODO o conteúdo antigo — código Java, banco e modelos — sem possibilidade de recuperação. O projeto novo começa do zero.`}
+          confirmLabel="Apagar e substituir"
+          danger
+          onCancel={() => setConfirmando(false)}
+          onConfirm={() => {
+            setConfirmando(false);
+            void criar();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

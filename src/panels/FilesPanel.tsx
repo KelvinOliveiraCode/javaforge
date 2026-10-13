@@ -4,12 +4,14 @@ import {
   createFileIn,
   createFolderIn,
   deletePath,
+  deleteProject,
   openFile,
   refreshTree,
   renamePath,
 } from "../actions";
-import { useStore } from "../store";
+import { showToast, store, useStore } from "../store";
 import type { TreeNode } from "../types";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 export default function FilesPanel() {
   const tree = useStore((s) => s.tree);
@@ -20,6 +22,7 @@ export default function FilesPanel() {
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
 
   const toggle = (path: string) => {
     const next = new Set(collapsed);
@@ -90,7 +93,11 @@ export default function FilesPanel() {
           onClick={() => {
             setSelected(node.path);
             if (node.kind === "dir") toggle(node.path);
-            else void openFile(node.path);
+            else if (node.ext === "db") {
+              // o banco é binário: manda para a aba Banco em vez do editor
+              store.setState({ rightTab: "sql" });
+              showToast("info", `"${node.name}" é o banco do aplicativo. Use a aba Banco para ver e alterar os dados.`);
+            } else void openFile(node.path);
           }}
           onDoubleClick={() => {
             if (node.kind === "file") {
@@ -99,7 +106,10 @@ export default function FilesPanel() {
             }
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && node.kind === "file") void openFile(node.path);
+            if (e.key === "Enter" && node.kind === "file") {
+              if (node.ext === "db") store.setState({ rightTab: "sql" });
+              else void openFile(node.path);
+            }
           }}
         >
           <span className="twisty">{node.kind === "dir" ? (isOpen ? "▼" : "▶") : ""}</span>
@@ -178,9 +188,20 @@ export default function FilesPanel() {
           className="btn sm danger"
           disabled={!selected}
           onClick={() => selected && void deletePath(selected)}
+          title="Excluir o arquivo ou pasta selecionada"
         >
           Excluir
         </button>
+        <button
+          className="btn sm danger"
+          disabled={!project}
+          onClick={() => setConfirmarExclusao(true)}
+          title="Apagar a pasta do projeto e o código gerado (não dá para desfazer)"
+        >
+          Excluir projeto
+        </button>
+      </div>
+      <div className="side-foot">
         <button
           className="btn sm"
           disabled={!project}
@@ -190,6 +211,19 @@ export default function FilesPanel() {
           Abrir pasta
         </button>
       </div>
+      {confirmarExclusao && project ? (
+        <ConfirmDialog
+          title={`Excluir "${project.name}"?`}
+          message={`A pasta ${project.path} e todo o código Java gerado serão apagados do computador. O app volta para a tela inicial e não dá para desfazer.`}
+          confirmLabel="Excluir projeto"
+          danger
+          onCancel={() => setConfirmarExclusao(false)}
+          onConfirm={() => {
+            setConfirmarExclusao(false);
+            void deleteProject(project.path);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -75,6 +75,31 @@ pub fn client_log(message: String) {
     }
 }
 
+/// Apaga um projeto gerado (a pasta inteira) e o tira dos recentes.
+///
+/// Só apaga pastas que tenham `app.model.json`: assim um clique errado nunca
+/// remove uma pasta qualquer do computador.
+#[tauri::command]
+pub fn project_delete(path: String) -> Result<(), String> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err("Pasta não encontrada.".to_string());
+    }
+    if !dir.join("app.model.json").is_file() {
+        return Err(
+            "Esta pasta não é um projeto JavaForge (app.model.json não encontrado). Nada foi apagado."
+                .to_string(),
+        );
+    }
+    let canon = fs::canonicalize(&dir).map_err(|e| e.to_string())?;
+    if canon.parent().is_none() {
+        return Err("Não é permitido apagar uma unidade inteira.".to_string());
+    }
+    fs::remove_dir_all(&canon).map_err(|e| format!("Falha ao apagar a pasta: {}", e))?;
+    registry::forget(&path);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn project_open(path: String) -> Result<ProjectEntry, String> {
     let dir = PathBuf::from(&path);
@@ -110,6 +135,7 @@ pub fn project_create(
     name: String,
     parent_dir: String,
     package_name: String,
+    replace_folder: bool,
 ) -> Result<ProjectEntry, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -130,14 +156,19 @@ pub fn project_create(
     let folder = sanitize_folder_name(&name);
     let project_dir = parent.join(&folder);
     if project_dir.exists() {
-        let empty = fs::read_dir(&project_dir)
+        let vazia = fs::read_dir(&project_dir)
             .map(|mut d| d.next().is_none())
             .unwrap_or(false);
-        if !empty {
-            return Err(format!(
-                "A pasta \"{}\" já existe e não está vazia.",
-                project_dir.display()
-            ));
+        if !vazia {
+            if !replace_folder {
+                return Err(format!(
+                    "A pasta \"{}\" já existe e não está vazia. Marque \"substituir a pasta\" para trocar o projeto inteiro.",
+                    folder
+                ));
+            }
+            // o usuário confirmou: apaga a pasta antiga antes de criar a nova
+            fs::remove_dir_all(&project_dir)
+                .map_err(|e| format!("Falha ao apagar a pasta antiga: {}", e))?;
         }
     }
 
@@ -149,12 +180,8 @@ pub fn project_create(
     let mut warnings = Vec::new();
     write_generated(&project_dir, &files, &mut warnings);
 
-    fs::create_dir_all(project_dir.join("lib")).ok();
-    fs::write(
-        project_dir.join("lib").join("sqlite-jdbc.jar"),
-        SQLITE_JAR_BYTES,
-    )
-    .map_err(|e| format!("Falha ao copiar o driver SQLite: {}", e))?;
+    fs::create_dir_all(project_dir.join("build").join("lib")).ok();
+    ensure_driver_jar(&project_dir).map_err(|e| format!("Falha ao copiar o driver SQLite: {}", e))?;
 
     // Cria o banco já com as tabelas e os dados iniciais.
     if let Err(e) = db_apply(&project_dir, &model, false) {
@@ -176,7 +203,7 @@ pub fn project_create(
 }
 
 fn manifest_path(project: &Path) -> PathBuf {
-    project.join(".javaforge").join("manifest.json")
+    build_dir(project).join("manifest.json")
 }
 
 fn read_manifest(project: &Path) -> serde_json::Value {
@@ -228,7 +255,7 @@ fn write_generated(project: &Path, files: &[codegen::GeneratedFile], warnings: &
         new_manifest.insert(f.path.clone(), json!(hash_str(&f.content)));
     }
 
-    let dir = project.join(".javaforge");
+    let dir = build_dir(project);
     fs::create_dir_all(&dir).ok();
     fs::write(manifest_path(project), json!(new_manifest).to_string()).ok();
 }
@@ -250,7 +277,7 @@ pub fn codegen_generate(project_dir: String) -> Result<CodegenResult, String> {
 
 // -------------------------------------------------------------- arquivos --
 
-const SKIP_DIRS: [&str; 5] = ["target", ".javaforge", "out", "bin", ".git"];
+const SKIP_DIRS: [&str; 6] = ["target", ".javaforge", "build", "out", "bin", ".git"];
 
 fn build_tree(dir: &Path) -> Vec<TreeNode> {
     let mut entries: Vec<TreeNode> = Vec::new();
@@ -317,6 +344,32 @@ fn language_of(path: &Path) -> String {
     }
 }
 
+/// Extensões que nunca devem abrir no editor de texto.
+const BINARY_EXTS: [&str; 10] = [
+    "db", "jar", "class", "exe", "dll", "bin", "png", "ico", "zip", "so",
+];
+
+fn binary_reason(path: &Path) -> Option<String> {
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "arquivo".to_string());
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if ext == "db" {
+        return Some(format!(
+            "\"{}\" é o banco SQLite do aplicativo (arquivo binário) e não abre no editor. Use a aba Banco para consultar e alterar os dados.",
+            name
+        ));
+    }
+    if BINARY_EXTS.contains(&ext.as_str()) {
+        return Some(format!("\"{}\" é um arquivo binário e não abre no editor.", name));
+    }
+    None
+}
+
 #[tauri::command]
 pub fn fs_read(path: String) -> Result<FileContent, String> {
     let p = PathBuf::from(&path);
@@ -327,7 +380,18 @@ pub fn fs_read(path: String) -> Result<FileContent, String> {
     if meta.len() > 4 * 1024 * 1024 {
         return Err("Arquivo maior que 4 MB não é aberto no editor.".to_string());
     }
+    if let Some(reason) = binary_reason(&p) {
+        return Err(reason);
+    }
     let bytes = fs::read(&p).map_err(|e| format!("Falha ao ler: {}", e))?;
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        return Err(format!(
+            "\"{}\" parece ser um arquivo binário e não abre no editor.",
+            p.file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        ));
+    }
     let content = String::from_utf8_lossy(&bytes).to_string();
     Ok(FileContent {
         path: path.clone(),
@@ -412,20 +476,22 @@ fn param_capable(c: &ComponentSpec) -> bool {
             | ComponentType::JComboBox
             | ComponentType::JList
             | ComponentType::JSpinner
+            | ComponentType::JToggleButton
+            | ComponentType::JSlider
     )
 }
 
 fn events_of(c: &ComponentSpec) -> &'static [&'static str] {
     match c.comp_type {
-        ComponentType::JButton => &["actionPerformed"],
+        ComponentType::JButton | ComponentType::JToggleButton => &["actionPerformed"],
         ComponentType::JTextField | ComponentType::JPasswordField => {
             &["actionPerformed", "focusLost"]
         }
         ComponentType::JTextArea => &["focusLost"],
-        ComponentType::JCheckBox | ComponentType::JRadioButton => {
+        ComponentType::JCheckBox | ComponentType::JRadioButton | ComponentType::JComboBox => {
             &["actionPerformed", "itemStateChanged"]
         }
-        ComponentType::JComboBox => &["itemStateChanged", "actionPerformed"],
+        ComponentType::JSlider => &["stateChanged"],
         _ => &[],
     }
 }
@@ -540,6 +606,35 @@ pub fn validate_model(model: AppModel) -> Vec<Problem> {
                 _ => {}
             }
         }
+        // menus da janela
+        let mut menu_ids: HashSet<String> = HashSet::new();
+        for m in &w.menu {
+            if !menu_ids.insert(m.id.clone()) {
+                out.push(err(format!("Menu com id repetido na janela: \"{}\".", m.id)));
+            }
+            if m.label.trim().is_empty() {
+                out.push(Problem {
+                    severity: "warning".into(),
+                    message: format!("Menu \"{}\" está sem rótulo.", m.id),
+                    component_id: None,
+                    window_id: Some(w.id.clone()),
+                });
+            }
+            for item in &m.items {
+                if !is_valid_java_ident(&item.id) {
+                    out.push(err(format!(
+                        "Item de menu \"{}\" com identificador inválido para Java.",
+                        item.id
+                    )));
+                }
+                if !menu_ids.insert(item.id.clone()) {
+                    out.push(err(format!(
+                        "Item de menu com id repetido na janela: \"{}\".",
+                        item.id
+                    )));
+                }
+            }
+        }
     }
 
     let mut tables: HashSet<String> = HashSet::new();
@@ -574,6 +669,55 @@ pub fn validate_model(model: AppModel) -> Vec<Problem> {
                         "AUTOINCREMENT só vale para colunas INTEGER: \"{}.{}\".",
                         t.name, c.name
                     )));
+                }
+            }
+            // chave estrangeira apontando para tabela/coluna que não existe
+            if !c.refs_table.trim().is_empty() {
+                if c.pk {
+                    out.push(Problem {
+                        severity: "error".into(),
+                        message: format!(
+                            "A coluna \"{}.{}\" é chave primária e não pode ser chave estrangeira ao mesmo tempo.",
+                            t.name, c.name
+                        ),
+                        component_id: None,
+                        window_id: None,
+                    });
+                }
+                if c.refs_table == t.name {
+                    out.push(Problem {
+                        severity: "error".into(),
+                        message: format!(
+                            "A coluna \"{}.{}\" aponta para a própria tabela.",
+                            t.name, c.name
+                        ),
+                        component_id: None,
+                        window_id: None,
+                    });
+                }
+                let destino = model
+                    .database
+                    .tables
+                    .iter()
+                    .find(|x| x.name == c.refs_table);
+                match destino {
+                    None => out.push(err(format!(
+                        "A coluna \"{}.{}\" aponta para a tabela inexistente \"{}\".",
+                        t.name, c.name, c.refs_table
+                    ))),
+                    Some(tab) => {
+                        let col = if c.refs_column.trim().is_empty() {
+                            "id".to_string()
+                        } else {
+                            c.refs_column.clone()
+                        };
+                        if !tab.columns.iter().any(|x| x.name == col) {
+                            out.push(err(format!(
+                                "A coluna \"{}.{}\" aponta para \"{}.{}\", que não existe.",
+                                t.name, c.name, c.refs_table, col
+                            )));
+                        }
+                    }
                 }
             }
         }
@@ -618,6 +762,13 @@ pub fn validate_model(model: AppModel) -> Vec<Problem> {
             .flat_map(|w| w.components.iter())
             .find(|c| c.id == id)
     };
+    let is_menu_item = |id: &str| -> bool {
+        model
+            .windows
+            .iter()
+            .flat_map(|w| w.menu.iter().flat_map(|m| m.items.iter()))
+            .any(|i| i.id == id)
+    };
 
     let mut conn_ids: HashSet<String> = HashSet::new();
     for c in &model.connections {
@@ -630,6 +781,20 @@ pub fn validate_model(model: AppModel) -> Vec<Problem> {
             });
         }
         let Some(comp) = comp_anywhere(&c.component_id) else {
+            if is_menu_item(&c.component_id) {
+                if c.event != "actionPerformed" {
+                    out.push(Problem {
+                        severity: "warning".into(),
+                        message: format!(
+                            "Item de menu só dispara clique (actionPerformed); conexão \"{}\" usa \"{}\".",
+                            c.name, c.event
+                        ),
+                        component_id: None,
+                        window_id: None,
+                    });
+                }
+                continue;
+            }
             out.push(err(format!(
                 "Conexão \"{}\" aponta para um componente inexistente.",
                 c.name
@@ -836,6 +1001,14 @@ pub fn ddl_statements(model: &AppModel) -> Vec<String> {
                 if c.not_null {
                     s = format!("{} NOT NULL", s);
                 }
+                if !c.refs_table.trim().is_empty() {
+                    let target = if c.refs_column.trim().is_empty() {
+                        "id".to_string()
+                    } else {
+                        c.refs_column.clone()
+                    };
+                    s = format!(r#"{} REFERENCES "{}" ("{}")"#, s, c.refs_table, target);
+                }
                 s
             })
             .collect::<Vec<_>>()
@@ -921,51 +1094,213 @@ public class SchemaTool {
 }
 "#;
 
-pub fn db_apply(project: &Path, model: &AppModel, _fresh: bool) -> Result<(), String> {
-    let tools = project.join(".javaforge").join("tools");
-    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
-    let ddl_file = tools.join("ddl.txt");
-    let seed_file = tools.join("seed.txt");
-    fs::write(
-        &ddl_file,
-        ddl_statements(model).join("\r\n"),
-    )
-    .map_err(|e| e.to_string())?;
-    fs::write(&seed_file, seed_statements(model).join("\r\n")).map_err(|e| e.to_string())?;
-    fs::write(tools.join("SchemaTool.java"), SCHEMA_TOOL_JAVA).map_err(|e| e.to_string())?;
+const SQL_TOOL_JAVA: &str = r#"import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 
-    let jar = project.join("lib").join("sqlite-jdbc.jar");
-    if !jar.exists() {
-        fs::create_dir_all(jar.parent().unwrap()).ok();
-        fs::write(&jar, SQLITE_JAR_BYTES).map_err(|e| e.to_string())?;
+public class SqlTool {
+    public static void main(String[] args) throws Exception {
+        String sql = new String(Files.readAllBytes(Paths.get(args[0])), "UTF-8");
+        Class.forName("org.sqlite.JDBC");
+        try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + args[1]);
+             Statement st = c.createStatement()) {
+            boolean temResultado = st.execute(sql);
+            if (temResultado) {
+                try (ResultSet rs = st.getResultSet()) {
+                    ResultSetMetaData md = rs.getMetaData();
+                    int n = md.getColumnCount();
+                    StringBuilder cols = new StringBuilder("COLS\t");
+                    for (int i = 1; i <= n; i++) {
+                        if (i > 1) cols.append("\t");
+                        cols.append(md.getColumnLabel(i));
+                    }
+                    System.out.println(cols);
+                    while (rs.next()) {
+                        StringBuilder row = new StringBuilder("ROW\t");
+                        for (int i = 1; i <= n; i++) {
+                            if (i > 1) row.append("\t");
+                            String v = rs.getString(i);
+                            row.append(v == null ? "" : v.replace("\t", " ").replace("\n", " "));
+                        }
+                        System.out.println(row);
+                    }
+                }
+                System.out.println("END");
+            } else {
+                System.out.println("AFFECTED\t" + st.getUpdateCount());
+            }
+        }
     }
-    let javac = resolve_javac().ok_or_else(|| {
-        "javac não encontrado. Instale o JDK 17+ (JAVA_HOME) para preparar o banco.".to_string()
-    })?;
+}
+"#;
 
-    let out_dir = tools.join("out");
-    let _ = fs::remove_dir_all(&out_dir);
-    fs::create_dir_all(&out_dir).ok();
+/// Verdadeiro quando o `.class` já é mais novo que o `.java` (nada a recompilar).
+fn tool_up_to_date(src: &Path, class: &Path) -> bool {
+    let (Ok(a), Ok(b)) = (fs::metadata(src), fs::metadata(class)) else {
+        return false;
+    };
+    match (a.modified(), b.modified()) {
+        (Ok(src_time), Ok(class_time)) => class_time > src_time,
+        _ => false,
+    }
+}
 
+/// Escreve o fonte de uma ferramenta auxiliar e compila só quando necessário.
+///
+/// O console SQL roda várias vezes por sessão; recompilar o `SqlTool` a cada
+/// execução custava cerca de um segundo sem trazer nenhum ganho.
+fn ensure_tool(
+    project: &Path,
+    tools: &Path,
+    name: &str,
+    source: &str,
+    out_dir: &Path,
+    missing_javac: &str,
+) -> Result<(), String> {
+    let src = tools.join(format!("{}.java", name));
+    let class = out_dir.join(format!("{}.class", name));
+    if tool_up_to_date(&src, &class) {
+        return Ok(());
+    }
+    fs::create_dir_all(tools).map_err(|e| e.to_string())?;
+    fs::create_dir_all(out_dir).ok();
+    fs::write(&src, source).map_err(|e| e.to_string())?;
+    let jar = ensure_driver_jar(project).map_err(|e| e.to_string())?;
+    let javac = resolve_javac().ok_or_else(|| missing_javac.to_string())?;
     let out = std::process::Command::new(&javac)
         .arg("-encoding")
         .arg("UTF-8")
         .arg("-d")
-        .arg(&out_dir)
+        .arg(out_dir)
         .arg("-cp")
         .arg(&jar)
-        .arg(tools.join("SchemaTool.java"))
+        .arg(&src)
         .creation_flags(0x08000000)
         .output()
-        .map_err(|e| format!("Falha ao compilar SchemaTool: {}", e))?;
+        .map_err(|e| format!("Falha ao compilar {}: {}", name, e))?;
     if !out.status.success() {
         return Err(format!(
-            "Falha ao compilar SchemaTool: {}",
+            "Falha ao compilar {}: {}",
+            name,
             String::from_utf8_lossy(&out.stderr)
         ));
     }
+    Ok(())
+}
 
+/// Executa SQL livre no banco do projeto (consulta ou escrita) e devolve o resultado.
+#[tauri::command]
+pub fn db_sql(project_dir: String, sql: String) -> Result<DbQueryResult, String> {
+    let project = PathBuf::from(&project_dir);
+    let db_file = read_model(&project)?.database.file;
+    let root = build_dir(&project);
+    let tools = root.join("tools");
+    let out_dir = root.join("out-sql");
+
+    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
+    let sql_file = tools.join("consulta.sql");
+    fs::write(&sql_file, sql.as_bytes()).map_err(|e| e.to_string())?;
+    ensure_tool(
+        &project,
+        &tools,
+        "SqlTool",
+        SQL_TOOL_JAVA,
+        &out_dir,
+        "javac não encontrado. Instale o JDK 17+ (JAVA_HOME) para usar o banco.",
+    )?;
+
+    let jar = ensure_driver_jar(&project).map_err(|e| e.to_string())?;
+    let db_path = project.join(&db_file);
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let run = std::process::Command::new("java")
+        .arg("-cp")
+        .arg(format!(
+            "{};{}",
+            out_dir.to_string_lossy(),
+            jar.to_string_lossy()
+        ))
+        .arg("SqlTool")
+        .arg(&sql_file)
+        .arg(&db_path)
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| format!("Falha ao executar SQL: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+    if !run.status.success() {
+        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+        return Ok(DbQueryResult {
+            columns: vec![],
+            rows: vec![],
+            affected: None,
+            error: Some(if stderr.trim().is_empty() {
+                "Falha ao executar o SQL.".to_string()
+            } else {
+                stderr
+            }),
+        });
+    }
+
+    let mut columns: Vec<String> = Vec::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut affected: Option<usize> = None;
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("COLS\t") {
+            columns = rest.split('\t').map(|s| s.to_string()).collect();
+        } else if let Some(rest) = line.strip_prefix("ROW\t") {
+            rows.push(rest.split('\t').map(|s| s.to_string()).collect());
+        } else if let Some(rest) = line.strip_prefix("AFFECTED\t") {
+            affected = rest.trim().parse::<usize>().ok();
+        }
+    }
+    Ok(DbQueryResult {
+        columns,
+        rows,
+        affected,
+        error: None,
+    })
+}
+
+/// Devolve o DDL (CREATE TABLE) do modelo do projeto.
+#[tauri::command]
+pub fn db_ddl(project_dir: String) -> Result<Vec<String>, String> {
+    let project = PathBuf::from(&project_dir);
+    let model = read_model(&project)?;
+    Ok(ddl_statements(&model))
+}
+
+pub fn db_apply(project: &Path, model: &AppModel, _fresh: bool) -> Result<(), String> {
+    let root = build_dir(project);
+    let tools = root.join("tools");
+    let out_dir = root.join("out");
+
+    let ddl_file = tools.join("ddl.txt");
+    let seed_file = tools.join("seed.txt");
+    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
+    fs::write(&ddl_file, ddl_statements(model).join("\r\n"))
+        .map_err(|e| e.to_string())?;
+    fs::write(&seed_file, seed_statements(model).join("\r\n"))
+        .map_err(|e| e.to_string())?;
+    ensure_tool(
+        project,
+        &tools,
+        "SchemaTool",
+        SCHEMA_TOOL_JAVA,
+        &out_dir,
+        "javac não encontrado. Instale o JDK 17+ (JAVA_HOME) para preparar o banco.",
+    )?;
+
+    let jar = ensure_driver_jar(project).map_err(|e| e.to_string())?;
     let db_path = project.join(&model.database.file);
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
     let run = std::process::Command::new("java")
         .arg("-cp")
         .arg(format!(

@@ -30,6 +30,9 @@ pub fn run() {
             commands::validate_model,
             commands::codegen_generate,
             commands::db_recreate,
+            commands::db_sql,
+            commands::db_ddl,
+            commands::project_delete,
             runner::run_start,
             runner::run_stop,
         ])

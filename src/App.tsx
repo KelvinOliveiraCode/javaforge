@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { api } from "./api";
+import { aplicarTemaSalvo } from "./components/ThemeToggle";
 import { appendOutput, showToast, store, useStore } from "./store";
 import ErrorBoundary from "./ErrorBoundary";
 import IDE from "./ide/IDE";
@@ -8,6 +9,10 @@ import StartScreen from "./start/StartScreen";
 export default function App() {
   const screen = useStore((s) => s.screen);
   const toast = useStore((s) => s.toast);
+
+  useEffect(() => {
+    aplicarTemaSalvo();
+  }, []);
 
   useEffect(() => {
     let un1: (() => void) | undefined;

@@ -175,3 +175,98 @@ export function makeSeedRow(columns: { name: string }[]): Record<string, string>
   for (const c of columns) row[c.name] = "";
   return row;
 }
+
+// ------------------------------------------------------------------ menus --
+
+export function addMenu(model: AppModel, windowId: string): AppModel {
+  const next = cloneModel(model);
+  const win = findWindow(next, windowId);
+  if (!win) return model;
+  const n = win.menu.length + 1;
+  const id = `menu${n}`;
+  win.menu.push({
+    id,
+    label: `Menu ${n}`,
+    items: [
+      { id: `item${n}1`, label: "Item 1" },
+    ],
+  });
+  return next;
+}
+
+export function removeMenu(model: AppModel, windowId: string, menuId: string): AppModel {
+  const next = cloneModel(model);
+  const win = findWindow(next, windowId);
+  if (!win) return model;
+  const menu = win.menu.find((m) => m.id === menuId);
+  const itemIds = new Set(menu?.items.map((i) => i.id) ?? []);
+  win.menu = win.menu.filter((m) => m.id !== menuId);
+  next.connections = next.connections.filter(
+    (c) => !itemIds.has(c.componentId),
+  );
+  return next;
+}
+
+export function updateMenu(
+  model: AppModel,
+  windowId: string,
+  menuId: string,
+  patch: { label?: string; id?: string },
+): AppModel {
+  const next = cloneModel(model);
+  const menu = findWindow(next, windowId)?.menu.find((m) => m.id === menuId);
+  if (!menu) return model;
+  Object.assign(menu, patch);
+  return next;
+}
+
+export function addMenuItem(model: AppModel, windowId: string, menuId: string): AppModel {
+  const next = cloneModel(model);
+  const menu = findWindow(next, windowId)?.menu.find((m) => m.id === menuId);
+  if (!menu) return model;
+  const n = menu.items.length + 1;
+  menu.items.push({ id: `item${menu.id}${n}`, label: `Item ${n}` });
+  return next;
+}
+
+export function updateMenuItem(
+  model: AppModel,
+  windowId: string,
+  menuId: string,
+  itemId: string,
+  patch: { label?: string; id?: string },
+): AppModel {
+  const next = cloneModel(model);
+  const menu = findWindow(next, windowId)?.menu.find((m) => m.id === menuId);
+  const item = menu?.items.find((i) => i.id === itemId);
+  if (!menu || !item) return model;
+  const oldId = item.id;
+  Object.assign(item, patch);
+  if (patch.id && patch.id !== oldId) {
+    for (const c of next.connections) if (c.componentId === oldId) c.componentId = patch.id;
+  }
+  return next;
+}
+
+export function removeMenuItem(
+  model: AppModel,
+  windowId: string,
+  menuId: string,
+  itemId: string,
+): AppModel {
+  const next = cloneModel(model);
+  const menu = findWindow(next, windowId)?.menu.find((m) => m.id === menuId);
+  if (!menu) return model;
+  menu.items = menu.items.filter((i) => i.id !== itemId);
+  next.connections = next.connections.filter((c) => c.componentId !== itemId);
+  return next;
+}
+
+/** Itens de menu de todas as janelas (para o painel de conexões). */
+export function menuItems(model: AppModel): { item: { id: string; label: string }; windowId: string; menuId: string }[] {
+  const out: { item: { id: string; label: string }; windowId: string; menuId: string }[] = [];
+  for (const w of model.windows) {
+    for (const m of w.menu) for (const i of m.items) out.push({ item: i, windowId: w.id, menuId: m.id });
+  }
+  return out;
+}

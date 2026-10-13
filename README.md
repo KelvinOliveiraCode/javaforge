@@ -10,15 +10,28 @@ em qualquer editor.
 - **Tela inicial**: criar em branco, criar a partir de um modelo ou abrir um projeto existente
   (com lista de recentes).
 - **Modelos prontos**: "Login + painel principal" (consulta a tabela de usuários no SQLite e
-  abre o painel) e "Cadastro (CRUD)" (pesquisar, salvar, atualizar e excluir com dados de exemplo).
-- **Designer**: paleta com 14 componentes Swing (botão, rótulo, campo de texto, senha, área de
-  texto, caixa de seleção, rádio, combinação, lista, tabela, painel, rolagem, progresso, girar).
-  Arrastar para mover, alça para redimensionar, grade de 10 px, várias janelas por projeto.
+  abre o painel), "Cadastro (CRUD)" (pesquisar, salvar, atualizar e excluir com dados de exemplo),
+  "Lista de tarefas" (adicionar, renomear, excluir e listar; usa chave estrangeira entre as
+  tabelas `tarefas` e `projetos`), "Agenda de contatos" (nome, telefone e e-mail) e
+  "Calculadora" (sem banco: o botão roda código Java escrito por você).
+- **Edição segura**: desfazer/refazer (Ctrl+Z, Ctrl+Y) em qualquer alteração do modelo, com
+  edições seguidas juntadas em um passo só. Importar/Exportar o modelo em `.json` para levar
+  um aplicativo de um computador a outro.
+- **Tema claro ou escuro**: o botão de sol/lua na barra de título guarda a escolha.
+- **Designer**: paleta com 22 componentes Swing (botão, rótulo, campo de texto, senha, área de
+  texto, caixa de seleção, rádio, combinação, lista, tabela, painel, rolagem, progresso, girar,
+  botão liga/desliga, separador, deslizador, barra de rolagem, painel de texto, editor de texto,
+  barra de ferramentas e árvore). Arrastar para mover, alça para redimensionar, grade de 10 px,
+  várias janelas por projeto e barra de menus por janela.
 - **Conexões (o "cola" no-code)**: ligue um evento (clique, Enter, perda de foco) a uma ação:
   verificar login, inserir, atualizar, excluir, consultar e preencher tabela, abrir janela,
-  mostrar mensagem ou rodar código manual.
+  mostrar mensagem ou rodar código manual. Itens de menu também aceitam conexões.
 - **Dados**: editor de tabelas e colunas (chave primária, auto incremento, obrigatório) e de dados
   iniciais. O banco `app.db` é criado na pasta do projeto com um clique.
+- **Aba Banco**: rode SQL à mão no banco do aplicativo (consultar, inserir, corrigir), veja a
+  estrutura (tabelas, colunas e relações) e aplique o modelo de novo ao banco. SQL que apaga ou
+  reescreve dados pede confirmação. Clicar no `app.db` da árvore de arquivos abre essa aba — o
+  banco é binário e não abre no editor.
 - **Código**: o projeto gerado é Maven completo (com Maven Wrapper) e pode ser editado no
   editor do app (tema VS Code Dark+) ou em qualquer editor externo. Alterações feitas por fora
   geram cópia de segurança antes de uma nova geração.
@@ -50,7 +63,7 @@ Saída em `src-tauri/target/release/bundle/` (NSIS e MSI).
 src-tauri/src/
   model.rs        tipos do modelo (serde, espelho de src/types.ts)
   codegen.rs      gera Main/Schema/Database/<Janela>.java, pom.xml e wrapper Maven
-  templates.rs    modelos iniciais (branco, login, CRUD)
+  templates.rs    modelos iniciais (branco, login, CRUD, tarefas, contatos, calculadora)
   commands.rs     comandos Tauri: projetos, arquivos, modelo, validação, banco
   runner.rs       compila e executa o projeto gerado (Maven/javac) com saída ao vivo
   registry.rs     registro de projetos recentes (JSON em %APPDATA%)
@@ -59,7 +72,7 @@ src/
   start/          tela inicial e modal de criação
   ide/            cascos da IDE (barra de título, status, atalhos)
   designer/       canvas WYSIWYG com arrastar, redimensionar e seleção
-  panels/         arquivos, paleta, propriedades, conexões, dados, saída
+  panels/         arquivos, paleta, propriedades, conexões, dados, banco, saída
   editor/         abas e editor de código (CodeMirror, tema VS Code Dark+)
   theme-vscode.ts cores do VS Code Dark+ aplicadas ao CodeMirror
   actions.ts      ações sobre o modelo (debounce de salvamento e geração)
@@ -68,15 +81,49 @@ src/
 O `app.model.json` na raiz de cada projeto é a fonte da verdade: telas, componentes,
 conexões e banco. Salvar o modelo regera o código Java.
 
+### Estrutura do projeto gerado
+
+```
+MeuApp/
+├── pom.xml                      projeto Maven (dependência do sqlite-jdbc já incluída)
+├── mvnw, mvnw.cmd, .mvn/        Maven Wrapper
+├── README.md, .gitignore
+├── app.model.json               modelo visual (fonte da verdade)
+├── src/main/java/<pacote>/
+│   ├── Main.java                ponto de entrada
+│   ├── db/Database.java         acesso ao SQLite e métodos das conexões
+│   ├── db/Schema.java           tabelas, colunas, chaves estrangeiras e dados iniciais
+│   └── ui/*Window.java          uma classe por janela
+├── data/app.db                  banco SQLite (criado no primeiro uso)
+└── build/                       pasta de trabalho do JavaForge
+    ├── lib/sqlite-jdbc.jar      driver usado quando não há Maven
+    ├── tools/                   ferramentas auxiliares (SchemaTool, SqlTool, DDL, seed)
+    └── out/, out-sql/           classes compiladas dessas ferramentas
+```
+
+`build/`, `data/` e `target/` estão no `.gitignore` gerado. Projetos criados em
+versões anteriores usavam `.javaforge`, `lib/` e `app.db` na raiz: eles continuam
+abrindo e funcionando do mesmo jeito.
+
 ## Testes
 
 ```
 cargo test --test end_to_end
 ```
 
-Gera os três modelos e um modelo sintético com todos os componentes e todos os tipos de
-conexão, compila tudo com `javac` **e com Maven**, cria o banco via um SchemaTool Java
-e confere os identificadores.
+Gera os modelos (branco, login, CRUD, tarefas, contatos e calculadora) e um modelo sintético com
+todos os componentes e todos os tipos de conexão, compila tudo com `javac` **e com Maven**, cria o
+banco via um SchemaTool Java, confere os identificadores, a estrutura gerada, as chaves
+estrangeiras e o console SQL. São 10 testes.
+
+Há também um teste de fumaça da interface, que abre o app de verdade e confere que ele sobe,
+fica vivo e desenha a tela:
+
+```
+powershell -File tools\fumaca-ui.ps1
+```
+
+Saída em `verify/fumaca/tela.png`.
 
 ## Verificação ponta a ponta (já executada)
 

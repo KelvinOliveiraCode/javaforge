@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { createProject, openProjectByPath, refreshRecent } from "../actions";
+import { createProject, deleteProject, openProjectByPath, refreshRecent } from "../actions";
 import { useStore } from "../store";
+import type { ProjectEntry } from "../types";
 import NewProjectModal from "./NewProjectModal";
+import GuideModal from "../GuideModal";
+import ThemeToggle from "../components/ThemeToggle";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const TEMPLATES = [
   {
@@ -21,6 +25,8 @@ export default function StartScreen() {
   const recent = useStore((s) => s.recent);
   const [modalKind, setModalKind] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [paraExcluir, setParaExcluir] = useState<ProjectEntry | null>(null);
 
   useEffect(() => {
     void refreshRecent();
@@ -61,6 +67,10 @@ export default function StartScreen() {
           <span className="env-chip">Interface Swing</span>
           <span className="env-chip">SQLite</span>
           <span className="env-chip">Maven e javac</span>
+          <ThemeToggle />
+          <button className="btn sm" onClick={() => setGuideOpen(true)}>
+            Como usar
+          </button>
         </div>
       </header>
 
@@ -118,22 +128,34 @@ export default function StartScreen() {
           ) : (
             <div className="recent-list">
               {recent.map((p) => (
-                <button
-                  key={p.id}
-                  className="recent-row"
-                  onClick={() => void openProjectByPath(p.path)}
-                >
-                  <span aria-hidden className="tree-ico">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5v-7Z" />
+                <div key={p.id} className="recent-row">
+                  <button
+                    className="recent-open"
+                    onClick={() => void openProjectByPath(p.path)}
+                    title={`Abrir ${p.path}`}
+                  >
+                    <span aria-hidden className="tree-ico">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h3l1.5 2H13a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5v-7Z" />
+                      </svg>
+                    </span>
+                    <span>
+                      <div className="recent-name">{p.name}</div>
+                      <div className="recent-path">{p.path}</div>
+                    </span>
+                    <span className="recent-tag">{p.templateName}</span>
+                  </button>
+                  <button
+                    className="btn ghost icon sm recent-delete"
+                    aria-label={`Excluir ${p.name}`}
+                    title="Excluir o projeto do computador"
+                    onClick={() => setParaExcluir(p)}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.4">
+                      <path d="M2.5 3h7M4.5 3V2h3v1M3.5 3l.5 7h4l.5-7" fill="none" />
                     </svg>
-                  </span>
-                  <span>
-                    <div className="recent-name">{p.name}</div>
-                    <div className="recent-path">{p.path}</div>
-                  </span>
-                  <span className="recent-tag">{p.templateName}</span>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -145,6 +167,21 @@ export default function StartScreen() {
           kind={modalKind}
           onKindChange={setModalKind}
           onClose={() => setModalOpen(false)}
+        />
+      ) : null}
+      {guideOpen ? <GuideModal onClose={() => setGuideOpen(false)} /> : null}
+      {paraExcluir ? (
+        <ConfirmDialog
+          title={`Excluir "${paraExcluir.name}"?`}
+          message={`A pasta ${paraExcluir.path} e todo o código Java gerado serão apagados do computador. Não dá para desfazer.`}
+          confirmLabel="Excluir projeto"
+          danger
+          onCancel={() => setParaExcluir(null)}
+          onConfirm={() => {
+            const alvo = paraExcluir;
+            setParaExcluir(null);
+            if (alvo) void deleteProject(alvo.path);
+          }}
         />
       ) : null}
     </div>

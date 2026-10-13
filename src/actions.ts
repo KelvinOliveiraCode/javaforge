@@ -1,4 +1,5 @@
-import { api, joinPath } from "./api";
+import { api, baseName, joinPath } from "./api";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { catalogOf, defaultPropsFor, makeComponentId } from "./catalog";
 import {
   cloneModel,
@@ -16,14 +17,14 @@ import type {
   ComponentType,
   Problem,
 } from "./types";
-import { appendOutput, showToast, store } from "./store";
+import { appendOutput, initialModel, showToast, store } from "./store";
 
 let persistTimer: number | null = null;
 
-export function patchModel(fn: (m: AppModel) => void): void {
+export function patchModel(fn: (m: AppModel) => void, label = ""): void {
   const next = cloneModel(store.getState().model);
   fn(next);
-  store.setState({ model: next });
+  store.setModel(next, label);
   schedulePersist();
 }
 
@@ -93,6 +94,8 @@ export async function openProjectByPath(path: string): Promise<void> {
       screen: "ide",
       project: entry,
       model,
+      undoStack: [],
+      redoStack: [],
       modelPath: path,
       tree,
       problems,
@@ -114,9 +117,10 @@ export async function createProject(
   name: string,
   parentDir: string,
   packageName: string,
+  replaceFolder = false,
 ): Promise<boolean> {
   try {
-    const entry = await api.projectCreate(kind, name, parentDir, packageName);
+    const entry = await api.projectCreate(kind, name, parentDir, packageName, replaceFolder);
     await openProjectByPath(entry.path);
     const res = await api.codegen(entry.path);
     const tree = await api.tree(entry.path).catch(() => []);
@@ -231,7 +235,7 @@ export function updateComponent(id: string, patch: Partial<ComponentSpec>): void
     const win = findWindow(m, designerWindowId);
     const comp = win?.components.find((c) => c.id === id);
     if (comp) Object.assign(comp, patch);
-  });
+  }, `mover:${id}`);
 }
 
 export function updateComponentProps(id: string, key: string, value: string | number | boolean): void {
@@ -240,7 +244,7 @@ export function updateComponentProps(id: string, key: string, value: string | nu
     const win = findWindow(m, designerWindowId);
     const comp = win?.components.find((c) => c.id === id);
     if (comp) comp.props = { ...comp.props, [key]: value };
-  });
+  }, `prop:${id}:${key}`);
 }
 
 export function renameComponent(id: string, newId: string): void {
@@ -250,14 +254,16 @@ export function renameComponent(id: string, newId: string): void {
     showToast("error", "Identificador inválido ou já existe nesta janela.");
     return;
   }
-  store.setState({ model: next, selectedComponentId: newId });
+  store.setState({ selectedComponentId: newId });
+  store.setModel(next, "renomear");
   void persistNow();
 }
 
 export function deleteComponent(id: string): void {
   const { model, designerWindowId } = store.getState();
   const next = removeComponent(model, designerWindowId, id);
-  store.setState({ model: next, selectedComponentId: null });
+  store.setState({ selectedComponentId: null });
+  store.setModel(next, "excluir-componente");
   void persistNow();
 }
 
@@ -294,6 +300,7 @@ export function addWindow(): void {
       width: 640,
       height: 480,
       components: [],
+      menu: [],
     });
   });
   store.setState({ designerWindowId: id, selectedComponentId: null });
@@ -339,14 +346,14 @@ export function createConnection(): void {
 export function patchConnection(id: string, patch: Partial<ConnectionSpec>): void {
   const { model } = store.getState();
   const next = updateConnection(model, id, patch);
-  store.setState({ model: next });
+  store.setModel(next, `conexao:${id}`);
   schedulePersist();
 }
 
 export function deleteConnection(id: string): void {
   const { model } = store.getState();
   const next = model.connections.filter((c) => c.id !== id);
-  store.setState({ model: { ...model, connections: next } });
+  store.setModel({ ...model, connections: next });
   void persistNow();
 }
 
@@ -363,6 +370,131 @@ export function applyDb(drop: boolean): void {
       appendOutput(String(e));
       showToast("error", String(e));
     });
+}
+
+/** Volta para a tela inicial (trocar de projeto) mantendo o projeto em "recentes". */
+export async function goToStartScreen(): Promise<void> {
+  const { running, output } = store.getState();
+  if (running) {
+    try {
+      await api.runStop();
+    } catch {
+      /* processo já encerrado */
+    }
+  }
+  store.setState({
+    screen: "start",
+    openTabs: [],
+    centerTab: "design",
+    selectedComponentId: null,
+    output,
+  });
+  await refreshRecent();
+}
+
+/** Desfaz a última alteração do modelo (Ctrl+Z). */
+export function undo(): void {
+  if (!store.undo()) return;
+  // a seleção pode apontar para algo que acabou de sumir
+  const { model, designerWindowId } = store.getState();
+  const existe = model.windows.some((w) =>
+    w.components.some((c) => c.id === store.getState().selectedComponentId),
+  );
+  if (!existe) store.setState({ selectedComponentId: null });
+  void persistNow();
+}
+
+/** Refaz o que foi desfeito (Ctrl+Y). */
+export function redo(): void {
+  if (!store.redo()) return;
+  void persistNow();
+}
+
+/** Apaga o projeto do disco e o tira dos recentes. */
+export async function deleteProject(path: string): Promise<boolean> {
+  const { project, running } = store.getState();
+  // se for o projeto aberto, para a execução antes de apagar os arquivos
+  if (running && project?.path === path) {
+    try {
+      await api.runStop();
+    } catch {
+      /* processo já encerrado */
+    }
+  }
+  try {
+    await api.projectDelete(path);
+  } catch (e) {
+    showToast("error", String(e));
+    return false;
+  }
+  store.setState({ recent: store.getState().recent.filter((p) => p.path !== path) });
+  if (project?.path === path) {
+    store.setState({
+      screen: "start",
+      project: null,
+      model: initialModel(),
+      undoStack: [],
+      redoStack: [],
+      openTabs: [],
+      designerWindowId: "",
+      selectedComponentId: null,
+      output: [],
+      running: false,
+    });
+  }
+  await refreshRecent();
+  showToast("ok", "Projeto apagado.");
+  return true;
+}
+
+/** Salva o modelo em um arquivo `.json` escolhido pelo usuário. */
+export async function exportModel(): Promise<void> {
+  const { project, model } = store.getState();
+  if (!project) return;
+  const suggested = `${project.name.replace(/[^\w.-]+/g, "-")}.model.json`;
+  const target = await save({
+    title: "Exportar modelo do aplicativo",
+    defaultPath: joinPath(project.path, suggested),
+    filters: [{ name: "Modelo JavaForge", extensions: ["json"] }],
+  });
+  if (typeof target !== "string") return;
+  try {
+    await api.writeFile(target, JSON.stringify(model, null, 2));
+    showToast("ok", `Modelo salvo em ${baseName(target)}.`);
+  } catch (e) {
+    showToast("error", String(e));
+  }
+}
+
+/** Carrega um modelo `.json` exportado, substituindo o do projeto atual. */
+export async function importModel(): Promise<void> {
+  const { project } = store.getState();
+  if (!project) return;
+  const picked = await open({
+    title: "Importar modelo do aplicativo",
+    multiple: false,
+    filters: [{ name: "Modelo JavaForge", extensions: ["json"] }],
+  });
+  if (typeof picked !== "string") return;
+  try {
+    const file = await api.readFile(picked);
+    const parsed = JSON.parse(file.content) as AppModel;
+    if (!parsed || !Array.isArray(parsed.windows) || !parsed.database) {
+      throw new Error("O arquivo não tem o formato de modelo do JavaForge.");
+    }
+    store.setState({
+      model: parsed,
+      undoStack: [],
+      redoStack: [],
+      designerWindowId: parsed.mainWindowId || parsed.windows[0]?.id || "",
+      selectedComponentId: null,
+      centerTab: "design",
+    });
+    await persistNow();
+    showToast("ok", `Modelo "${baseName(picked)}" importado.`);
+  } catch (e) {
+    showToast("error", `Falha ao importar: ${String(e)}`);
+  }
 }
 
 // ---------------------------------------------------------------- arquivos --

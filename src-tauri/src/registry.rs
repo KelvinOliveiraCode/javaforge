@@ -27,7 +27,12 @@ fn registry_path() -> PathBuf {
 pub fn list() -> Vec<ProjectEntry> {
     let path = registry_path();
     match fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str::<Vec<ProjectEntry>>(&content).unwrap_or_default(),
+        Ok(content) => {
+            // alguns editores (e o PowerShell) gravam BOM no início; o JSON puro
+            // do serde rejeitaria o arquivo inteiro por causa disso
+            let limpo = content.trim_start_matches('\u{feff}');
+            serde_json::from_str::<Vec<ProjectEntry>>(limpo).unwrap_or_default()
+        }
         Err(_) => Vec::new(),
     }
 }

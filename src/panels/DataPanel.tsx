@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { applyDb, patchModel } from "../actions";
 import { useStore, showToast } from "../store";
-import type { SqlType, TableSpec } from "../types";
+import type { ColumnSpec, SqlType, TableSpec } from "../types";
 
 const SQL_TYPES: SqlType[] = ["INTEGER", "TEXT", "REAL", "BLOB"];
 
@@ -28,7 +28,9 @@ export default function DataPanel() {
     <div className="panel-pad" style={{ gap: 8 }}>
       <p className="panel-hint">
         As tabelas aqui viram o banco SQLite do aplicativo. As conexões usam essas colunas para
-        gravar e consultar. O arquivo <strong>{model.database.file}</strong> fica na pasta do projeto.
+        gravar e consultar. O arquivo <strong>{model.database.file}</strong> fica na pasta{" "}
+        <strong>data/</strong> do projeto. Em <strong>Relaciona com</strong> você liga uma coluna a
+        outra tabela (chave estrangeira) — o modelo "Lista de tarefas" usa isso.
       </p>
 
       <div className="field">
@@ -67,6 +69,7 @@ export default function DataPanel() {
             table={t}
             open={openTable === t.name}
             onToggle={() => setOpenTable(openTable === t.name ? null : t.name)}
+            otherTables={model.database.tables.filter((x) => x.name !== t.name)}
           />
         ))}
         {model.database.tables.length === 0 ? (
@@ -81,11 +84,19 @@ function TableCard({
   table,
   open,
   onToggle,
+  otherTables,
 }: {
   table: TableSpec;
   open: boolean;
   onToggle: () => void;
+  /** Demais tabelas, para o seletor de chave estrangeira. */
+  otherTables: TableSpec[];
 }) {
+  const setColumn = (i: number, key: keyof ColumnSpec, value: string | boolean) =>
+    patchModel((m) => {
+      const t = m.database.tables.find((x) => x.name === table.name);
+      if (t) (t.columns[i][key] as string | boolean) = value;
+    });
   return (
     <div className="data-table-card">
       <button className="data-table-head" onClick={onToggle}>
@@ -169,8 +180,7 @@ function TableCard({
                   className="btn ghost icon sm"
                   aria-label="Remover coluna"
                   onClick={() =>
-                    patchModel((m) => {
-                      const t = m.database.tables.find((x) => x.name === table.name);
+                    patchModel((m) => {                      const t = m.database.tables.find((x) => x.name === table.name);
                       if (t && t.columns.length > 1) t.columns.splice(i, 1);
                       else showToast("error", "A tabela precisa de ao menos uma coluna.");
                     })
@@ -179,6 +189,39 @@ function TableCard({
                   ×
                 </button>
               </div>
+              {col.pk ? null : (
+                <div className="col-refs">
+                  <span className="col-refs-label">Relaciona com</span>
+                  <select
+                    className="select sm"
+                    value={col.refsTable ?? ""}
+                    onChange={(e) => setColumn(i, "refsTable", e.target.value)}
+                  >
+                    <option value="">nada (coluna comum)</option>
+                    {otherTables.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  {col.refsTable ? (
+                    <select
+                      className="select sm"
+                      value={col.refsColumn ?? ""}
+                      onChange={(e) => setColumn(i, "refsColumn", e.target.value)}
+                    >
+                      <option value="">(coluna que quiser)</option>
+                      {(otherTables.find((t) => t.name === col.refsTable)?.columns ?? []).map(
+                        (c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  ) : null}
+                </div>
+              )}
             </div>
           ))}
 

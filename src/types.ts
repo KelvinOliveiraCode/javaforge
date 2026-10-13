@@ -14,7 +14,26 @@ export type ComponentType =
   | "JPanel"
   | "JScrollPane"
   | "JProgressBar"
-  | "JSpinner";
+  | "JSpinner"
+  | "JToggleButton"
+  | "JSeparator"
+  | "JSlider"
+  | "JScrollBar"
+  | "JTextPane"
+  | "JEditorPane"
+  | "JToolBar"
+  | "JTree";
+
+export interface MenuItemSpec {
+  id: string;
+  label: string;
+}
+
+export interface MenuSpec {
+  id: string;
+  label: string;
+  items: MenuItemSpec[];
+}
 
 export type SqlType = "INTEGER" | "TEXT" | "REAL" | "BLOB";
 
@@ -24,6 +43,10 @@ export interface ColumnSpec {
   pk: boolean;
   notNull: boolean;
   autoIncrement: boolean;
+  /** Tabela referenciada pela chave estrangeira (vazio = sem relação). */
+  refsTable?: string;
+  /** Coluna referenciada dentro de `refsTable`. */
+  refsColumn?: string;
 }
 
 export interface TableSpec {
@@ -54,6 +77,7 @@ export interface WindowSpec {
   width: number;
   height: number;
   components: ComponentSpec[];
+  menu: MenuSpec[];
 }
 
 export type ParamRole = "set" | "where";
@@ -148,4 +172,11 @@ export interface RunResult {
 export interface CodegenResult {
   files: string[];
   warnings: string[];
+}
+
+export interface DbQueryResult {
+  columns: string[];
+  rows: string[][];
+  affected: number | null;
+  error: string | null;
 }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
+import { useState } from "react";
 import { store, useStore } from "../store";
-import { deleteComponent, runProject, saveActiveFile, stopProject } from "../actions";
+import { deleteComponent, goToStartScreen, redo, runProject, saveActiveFile, stopProject, undo } from "../actions";
 import TitleBar from "./TitleBar";
 import StatusBar from "./StatusBar";
 import FilesPanel from "../panels/FilesPanel";
@@ -11,7 +12,9 @@ import CodeEditor from "../editor/CodeEditor";
 import PropertiesPanel from "../panels/PropertiesPanel";
 import ConnectionsPanel from "../panels/ConnectionsPanel";
 import DataPanel from "../panels/DataPanel";
+import DatabasePanel from "../panels/DatabasePanel";
 import OutputPanel from "../panels/OutputPanel";
+import GuideModal from "../GuideModal";
 
 function isTypingTarget(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
@@ -24,6 +27,7 @@ export default function IDE() {
   const centerTab = useStore((s) => s.centerTab);
   const leftTab = useStore((s) => s.leftTab);
   const rightTab = useStore((s) => s.rightTab);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -31,6 +35,19 @@ export default function IDE() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void saveActiveFile();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))
+      ) {
+        e.preventDefault();
+        redo();
         return;
       }
       if (e.key === "F5") {
@@ -123,15 +140,25 @@ export default function IDE() {
             >
               Dados
             </button>
+            <button
+              className={`side-tab ${rightTab === "sql" ? "active" : ""}`}
+              onClick={() => store.setState({ rightTab: "sql" })}
+              role="tab"
+              aria-selected={rightTab === "sql"}
+            >
+              Banco
+            </button>
           </div>
           <div className="side-content">
             {rightTab === "props" && <PropertiesPanel />}
             {rightTab === "connections" && <ConnectionsPanel />}
             {rightTab === "data" && <DataPanel />}
+            {rightTab === "sql" && <DatabasePanel />}
           </div>
         </aside>
       </div>
-      <StatusBar />
+      <StatusBar onGuide={() => setGuideOpen(true)} onUndo={undo} onRedo={redo} />
+      {guideOpen ? <GuideModal onClose={() => setGuideOpen(false)} /> : null}
     </div>
   );
 }

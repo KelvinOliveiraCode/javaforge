@@ -1,11 +1,43 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 pub const SQLITE_JAR_BYTES: &[u8] = include_bytes!("../../vendor/sqlite-jdbc.jar");
 pub const MVNW_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw");
 pub const MVNW_CMD_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw.cmd");
 pub const MVNW_PROPS_BYTES: &[u8] =
     include_bytes!("../../vendor/mvnw/.mvn/wrapper/maven-wrapper.properties");
+
+/// Pasta de trabalho do JavaForge dentro de um projeto gerado.
+///
+/// Projetos criados antes desta organização usam `.javaforge`; eles continuam
+/// funcionando sem migração forçada.
+pub fn build_dir(project: &Path) -> PathBuf {
+    let legacy = project.join(".javaforge");
+    if legacy.is_dir() {
+        legacy
+    } else {
+        project.join("build")
+    }
+}
+
+/// Caminho do driver SQLite local (usado quando o Maven não está disponível).
+pub fn driver_jar(project: &Path) -> PathBuf {
+    build_dir(project).join("lib").join("sqlite-jdbc.jar")
+}
+
+/// Garante o driver SQLite na pasta de trabalho, copiando o embutido se faltar.
+pub fn ensure_driver_jar(project: &Path) -> std::io::Result<PathBuf> {
+    let jar = driver_jar(project);
+    if jar.exists() {
+        return Ok(jar);
+    }
+    if let Some(parent) = jar.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&jar, SQLITE_JAR_BYTES)?;
+    Ok(jar)
+}
 
 pub fn hash_str(value: &str) -> String {
     let mut h = DefaultHasher::new();

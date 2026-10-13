@@ -1,11 +1,13 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { regenerate, runProject, stopProject } from "../actions";
+import { exportModel, goToStartScreen, importModel, regenerate, runProject, stopProject } from "../actions";
+import ThemeToggle from "../components/ThemeToggle";
 import { store, useStore } from "../store";
 
 export default function TitleBar() {
   const project = useStore((s) => s.project);
   const running = useStore((s) => s.running);
   const appWindow = getCurrentWindow();
+
 
   return (
     <header className="titlebar" data-tauri-drag-region>
@@ -21,6 +23,27 @@ export default function TitleBar() {
         <>
           <span className="project-package">{project.path}</span>
           <div className="titlebar-actions">
+            <button
+              className="btn sm"
+              onClick={() => void goToStartScreen()}
+              title="Voltar para a tela inicial (trocar de projeto)"
+            >
+              Início
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => void importModel()}
+              title="Carregar um modelo exportado (.json), substituindo o atual"
+            >
+              Importar
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => void exportModel()}
+              title="Salvar o modelo em um arquivo .json"
+            >
+              Exportar
+            </button>
             <button className="btn sm" onClick={() => void regenerate()} title="Gerar o código Java a partir do modelo">
               Gerar código
             </button>
@@ -40,6 +63,7 @@ export default function TitleBar() {
         </>
       ) : null}
       <div className="titlebar-actions">
+        <ThemeToggle />
         <button
           className="btn ghost icon"
           aria-label="Minimizar"

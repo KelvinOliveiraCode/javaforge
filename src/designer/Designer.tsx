@@ -158,6 +158,27 @@ export default function Designer() {
           + Janela
         </button>
         <span className="grow" />
+        <span className="designer-count" title="Componentes nesta janela">
+          {win.components.length} {win.components.length === 1 ? "componente" : "componentes"}
+        </span>
+        {win.components.length > 4 ? (
+          <select
+            className="select sm"
+            value=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              store.setState({ selectedComponentId: e.target.value });
+            }}
+            title="Selecionar componente pelo nome"
+          >
+            <option value="">Selecionar…</option>
+            {win.components.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.id} · {catalogOf(c.type).label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <label className="checkline">
           <input
             type="checkbox"
@@ -199,10 +220,22 @@ export default function Designer() {
           <div className="win-title">
             <span>{win.title || "(sem título)"}</span>
           </div>
+          {win.menu && win.menu.length > 0 ? (
+            <div className="win-menubar">
+              {win.menu.map((m) => (
+                <span key={m.id} className="win-menu">
+                  {m.label}
+                  {m.items.length > 0 ? (
+                    <span className="win-menu-items">{m.items.map((i) => i.label).join(" · ")}</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div
             ref={surfaceRef}
             className={`win-surface ${dropHint ? "drop-hint" : ""}`}
-            style={{ height: win.height - 26 }}
+            style={{ height: win.height - 26 - (win.menu && win.menu.length > 0 ? 22 : 0) }}
             onPointerDown={() => store.setState({ selectedComponentId: null })}
           >
             {snapGrid ? <div className="grid-layer" /> : null}
@@ -238,11 +271,17 @@ function cssClassOf(comp: ComponentSpec): string {
   switch (comp.type) {
     case "JButton":
       return "dc-btn";
+    case "JToggleButton":
+      return "dc-btn";
     case "JTextField":
       return "dc-input";
     case "JPasswordField":
       return "dc-pwd";
     case "JTextArea":
+      return "dc-textarea";
+    case "JTextPane":
+      return "dc-textarea";
+    case "JEditorPane":
       return "dc-textarea";
     case "JCheckBox":
       return "dc-check";
@@ -252,10 +291,20 @@ function cssClassOf(comp: ComponentSpec): string {
       return "dc-combo";
     case "JTable":
       return "dc-table";
+    case "JTree":
+      return "dc-tree";
     case "JPanel":
       return "dc-panel";
+    case "JToolBar":
+      return "dc-toolbar";
     case "JScrollPane":
       return "dc-scroll";
+    case "JSeparator":
+      return "dc-separator";
+    case "JSlider":
+      return "dc-slider";
+    case "JScrollBar":
+      return "dc-scrollbar";
     case "JProgressBar":
       return "dc-progress";
     case "JSpinner":
@@ -379,6 +428,80 @@ function renderBody(
             <span>▼</span>
           </span>
         </>
+      );
+    case "JToggleButton":
+      return (
+        <span className="dc-label">
+          {comp.props.selected ? "▣ " : "▢ "}
+          {text || "Opção"}
+        </span>
+      );
+    case "JSeparator":
+      return (
+        <div
+          style={{
+            width: String(comp.props.orientation ?? "horizontal") === "vertical" ? 1 : "100%",
+            height: String(comp.props.orientation ?? "horizontal") === "vertical" ? "100%" : 1,
+            background: "#9aa0a8",
+            margin: "auto",
+          }}
+        />
+      );
+    case "JSlider": {
+      const min = Number(comp.props.min ?? 0);
+      const max = Number(comp.props.max ?? 100);
+      const value = Number(comp.props.value ?? 50);
+      const pct = Math.max(0, Math.min(100, ((value - min) / (max - min || 1)) * 100));
+      return (
+        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}>
+          <div style={{ position: "relative", width: "100%", height: 4, background: "#9aa0a8", borderRadius: 2 }}>
+            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: "#3f8c41", borderRadius: 2 }} />
+            <div
+              style={{
+                position: "absolute",
+                left: `${pct}%`,
+                top: -4,
+                width: 10,
+                height: 12,
+                marginLeft: -5,
+                background: "linear-gradient(#fdfdfd, #e8eaee)",
+                border: "1px solid #9aa0a8",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+    case "JScrollBar":
+      return (
+        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "stretch", gap: 0 }}>
+          <div style={{ width: 14, background: "linear-gradient(#f4f6f8, #e4e7eb)", border: "1px solid #9aa0a8", display: "grid", placeItems: "center", fontSize: 7 }}>◀</div>
+          <div style={{ flex: 1, background: "#ffffff", border: "1px solid #9aa0a8", borderLeft: "none", borderRight: "none", position: "relative" }}>
+            <div style={{ position: "absolute", left: 2, top: 1, bottom: 1, width: 22, background: "linear-gradient(#f4f6f8, #d8dbdf)", border: "1px solid #9aa0a8", borderRadius: 2 }} />
+          </div>
+          <div style={{ width: 14, background: "linear-gradient(#f4f6f8, #e4e7eb)", border: "1px solid #9aa0a8", display: "grid", placeItems: "center", fontSize: 7 }}>▶</div>
+        </div>
+      );
+    case "JToolBar":
+      return (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 4, padding: "0 4px" }}>
+          {kids.length === 0 ? (
+            <span className="dc-label" style={{ color: "#5b6470" }}>
+              barra (solte botões aqui)
+            </span>
+          ) : (
+            kids.map((k) => renderComp(k, comp))
+          )}
+        </div>
+      );
+    case "JTree":
+      return (
+        <div style={{ width: "100%", padding: "3px 6px", display: "grid", gap: 1 }}>
+          <div style={{ fontSize: 11 }}>▼ {String(comp.props.root ?? "Raiz")}</div>
+          <div style={{ fontSize: 11, paddingLeft: 14 }}>├ Item 1</div>
+          <div style={{ fontSize: 11, paddingLeft: 14 }}>└ Item 2</div>
+        </div>
       );
     default:
       return null;

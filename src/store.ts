@@ -30,6 +30,13 @@ export interface State {
   screen: "start" | "ide";
   project: ProjectEntry | null;
   model: AppModel;
+  /** Estados anteriores do modelo (Ctrl+Z). */
+  undoStack: AppModel[];
+  /** Estados desfeitos, disponíveis para refazer (Ctrl+Y). */
+  redoStack: AppModel[];
+  /** Marca do último rótulo registrado, para juntar edições seguidas. */
+  lastEditLabel: string;
+  lastEditAt: number;
   modelPath: string;
   tree: TreeNode[];
   recent: ProjectEntry[];
@@ -38,7 +45,7 @@ export interface State {
   selectedComponentId: string | null;
   centerTab: string;
   openTabs: EditorTab[];
-  rightTab: "props" | "connections" | "data";
+  rightTab: "props" | "connections" | "data" | "sql";
   output: OutputLine[];
   running: boolean;
   problems: Problem[];
@@ -48,14 +55,14 @@ export interface State {
   snapGrid: boolean;
 }
 
-function initialModel(): AppModel {
+export function initialModel(): AppModel {
   return {
     schemaVersion: 1,
     name: "NovoApp",
     packageName: "com.exemplo.app",
     mainWindowId: "janelaPrincipal",
     windows: [],
-    database: { file: "app.db", tables: [] },
+    database: { file: "data/app.db", tables: [] },
     connections: [],
   };
 }
@@ -64,6 +71,10 @@ const initial: State = {
   screen: "start",
   project: null,
   model: initialModel(),
+  undoStack: [],
+  redoStack: [],
+  lastEditLabel: "",
+  lastEditAt: 0,
   modelPath: "",
   tree: [],
   recent: [],
@@ -82,6 +93,9 @@ const initial: State = {
   snapGrid: true,
 };
 
+const LIMITE_HISTORICO = 100;
+const JANELA_COALESCENCIA = 700;
+
 type Listener = () => void;
 
 export class Store<T extends object> {
@@ -98,6 +112,65 @@ export class Store<T extends object> {
     const next = typeof patch === "function" ? patch(this.state) : patch;
     this.state = { ...this.state, ...next };
     for (const l of this.listeners) l();
+  };
+
+  /**
+   * Troca o modelo guardando o estado anterior no histórico.
+   *
+   * Edições seguidas com o mesmo `label` dentro da janela de coalescência viram
+   * um passo só: digitar "Java" em um campo não vira quatro Ctrl+Z.
+   */
+  setModel = (next: AppModel, label = ""): void => {
+    const s = this.state as unknown as State;
+    const prev = s.model;
+    if (prev === next) return;
+    const agora = Date.now();
+    const juntar =
+      label !== "" && label === s.lastEditLabel && agora - s.lastEditAt < JANELA_COALESCENCIA;
+    const undoStack = juntar ? s.undoStack : [...s.undoStack, prev].slice(-LIMITE_HISTORICO);
+    this.state = {
+      ...s,
+      model: next,
+      undoStack,
+      redoStack: [],
+      lastEditLabel: label,
+      lastEditAt: agora,
+    } as unknown as T;
+    for (const l of this.listeners) l();
+  };
+
+  /** Volta um passo. Devolve `false` quando não há o que desfazer. */
+  undo = (): boolean => {
+    const s = this.state as unknown as State;
+    if (s.undoStack.length === 0) return false;
+    const anterior = s.undoStack[s.undoStack.length - 1];
+    this.state = {
+      ...s,
+      model: anterior,
+      undoStack: s.undoStack.slice(0, -1),
+      redoStack: [s.model, ...s.redoStack].slice(0, LIMITE_HISTORICO),
+      lastEditLabel: "",
+      lastEditAt: 0,
+    } as unknown as T;
+    for (const l of this.listeners) l();
+    return true;
+  };
+
+  /** Refaz um passo desfeito. Devolve `false` quando não há o que refazer. */
+  redo = (): boolean => {
+    const s = this.state as unknown as State;
+    if (s.redoStack.length === 0) return false;
+    const proximo = s.redoStack[0];
+    this.state = {
+      ...s,
+      model: proximo,
+      undoStack: [...s.undoStack, s.model].slice(-LIMITE_HISTORICO),
+      redoStack: s.redoStack.slice(1),
+      lastEditLabel: "",
+      lastEditAt: 0,
+    } as unknown as T;
+    for (const l of this.listeners) l();
+    return true;
   };
 
   subscribe = (l: Listener): (() => void) => {

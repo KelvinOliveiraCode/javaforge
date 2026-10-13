@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { catalogOf } from "../catalog";
-import { createConnection, deleteConnection, patchConnection } from "../actions";
-import { useStore } from "../store";
+import { menuItems } from "../model-ops";
+import { createConnection, deleteConnection, patchConnection, patchModel } from "../actions";
+import { store, useStore } from "../store";
+import { quickActionsFor, type QuickContext } from "../guide";
 import type {
   AppModel,
   ConnectionKind,
@@ -46,8 +48,13 @@ function summary(c: ConnectionSpec, model: AppModel): string {
 export default function ConnectionsPanel() {
   const model = useStore((s) => s.model);
   const problems = useStore((s) => s.problems);
+  const selectedId = useStore((s) => s.selectedComponentId);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const conns = model.connections;
+  const [showAll, setShowAll] = useState(false);
+  const allConns = model.connections;
+  // com um componente selecionado, mostra só as conexões dele
+  const scoped = !showAll && selectedId ? allConns.filter((c) => c.componentId === selectedId) : allConns;
+  const conns = scoped;
   const active = conns.find((c) => c.id === activeId) ?? conns[0] ?? null;
 
   useEffect(() => {
@@ -57,8 +64,9 @@ export default function ConnectionsPanel() {
   const allComponents: { comp: ComponentSpec; windowId: string }[] = model.windows.flatMap((w) =>
     w.components.map((c) => ({ comp: c, windowId: w.id })),
   );
+  const menus = menuItems(model);
   const paramCapable = (c: ComponentSpec) =>
-    ["JTextField", "JPasswordField", "JTextArea", "JCheckBox", "JRadioButton", "JComboBox", "JList", "JSpinner"].includes(
+    ["JTextField", "JPasswordField", "JTextArea", "JCheckBox", "JRadioButton", "JComboBox", "JList", "JSpinner", "JToggleButton", "JSlider"].includes(
       c.type,
     );
   const table = model.database.tables.find((t) => t.name === active?.table);
@@ -67,8 +75,25 @@ export default function ConnectionsPanel() {
   const compOf = (id: string) => allComponents.find((x) => x.comp.id === id)?.comp;
   const compEvents = (id: string) => {
     const c = compOf(id);
-    return c ? catalogOf(c.type).events : [];
+    if (!c) return [{ event: "actionPerformed", label: "Clique (actionPerformed)" }];
+    return catalogOf(c.type).events.length > 0
+      ? catalogOf(c.type).events
+      : [{ event: "actionPerformed", label: "Clique (actionPerformed)" }];
   };
+
+  const selectedComp = selectedId ? compOf(selectedId) : undefined;
+  const quickContext: QuickContext | null = selectedComp
+    ? {
+        componentId: selectedComp.id,
+        event: (catalogOf(selectedComp.type).events[0]?.event ?? "actionPerformed") as string,
+        table: model.database.tables[0]?.name ?? "",
+        tables: model.database.tables.map((t) => t.name),
+        columns: (model.database.tables[0]?.columns ?? []).map((c) => c.name),
+        windows: model.windows.map((w) => ({ id: w.id, title: w.title })),
+        mainWindowId: model.mainWindowId,
+      }
+    : null;
+  const quickActions = selectedComp ? quickActionsFor(selectedComp.type) : [];
 
   if (conns.length === 0) {
     return (
@@ -77,6 +102,59 @@ export default function ConnectionsPanel() {
           Conexões ligam um evento de um componente (clique, Enter, perda de foco) a uma ação:
           consultar o banco, gravar um registro, abrir outra janela ou mostrar uma mensagem.
         </p>
+        {selectedComp ? (
+          <>
+            <div className="props-title">O que dá para fazer com {selectedComp.id}</div>
+            <div className="quick-actions">
+              {quickActions.length === 0 ? (
+                <p className="panel-hint">
+                  Este componente não dispara eventos. Use campos e botões para criar conexões.
+                </p>
+              ) : (
+                quickActions.map((qa) => (
+                  <button
+                    key={qa.label}
+                    className="quick-action"
+                    onClick={() => {
+                      patchModel((m) => {
+                        m.connections.push({
+                          id: `conexao${m.connections.length + 1}`,
+                          name: qa.label,
+                          componentId: selectedComp.id,
+                          event: (catalogOf(selectedComp.type).events[0]?.event ?? "actionPerformed"),
+                          kind: "message",
+                          table: m.database.tables[0]?.name ?? "",
+                          params: [],
+                          queryColumns: [],
+                          targetTableComponentId: "",
+                          openWindowId: "",
+                          closeCurrent: false,
+                          message: "",
+                          messageTitle: "",
+                          messageKind: "info",
+                          authSuccessWindowId: "",
+                          customCode: "",
+                          ...qa.build({
+                            componentId: selectedComp.id,
+                            event: (catalogOf(selectedComp.type).events[0]?.event ?? "actionPerformed"),
+                            table: m.database.tables[0]?.name ?? "",
+                            tables: m.database.tables.map((t) => t.name),
+                            columns: (m.database.tables[0]?.columns ?? []).map((c) => c.name),
+                            windows: m.windows.map((w) => ({ id: w.id, title: w.title })),
+                            mainWindowId: m.mainWindowId,
+                          }),
+                        });
+                      });
+                    }}
+                  >
+                    <strong>{qa.label}</strong>
+                    <small>{qa.hint}</small>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : null}
         <button className="btn primary" onClick={createConnection}>
           Criar primeira conexão
         </button>
@@ -87,9 +165,30 @@ export default function ConnectionsPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
       <div className="conn-list" style={{ overflowY: "auto", flex: "none", maxHeight: 168 }}>
-        <button className="btn sm" onClick={createConnection}>
-          + Nova conexão
-        </button>
+        {showAll || !selectedId ? (
+          <button className="btn sm" onClick={createConnection}>
+            + Nova conexão
+          </button>
+        ) : (
+          <div className="scope-note">
+            Conexões de <b>{selectedId}</b>.{" "}
+            <button
+              className="btn sm ghost"
+              onClick={() => setShowAll(true)}
+            >
+              Ver todas do app ({allConns.length})
+            </button>{" "}
+            ou clique em qualquer área vazia da tela.
+          </div>
+        )}
+        {showAll && (
+          <div className="scope-note">
+            Todas as conexões do app.{" "}
+            <button className="btn sm ghost" onClick={() => setShowAll(false)}>
+              Ver só as do componente selecionado
+            </button>
+          </div>
+        )}
         {conns.map((c) => (
           <div
             key={c.id}
@@ -101,6 +200,57 @@ export default function ConnectionsPanel() {
           </div>
         ))}
       </div>
+
+      {selectedComp && quickActions.length > 0 ? (
+        <div style={{ padding: "8px 10px 0" }}>
+          <div className="props-title" style={{ padding: 0 }}>
+            O que dá para fazer com {selectedComp.id}
+          </div>
+          <div className="quick-actions" style={{ marginTop: 6 }}>
+            {quickActions.map((qa) => (
+              <button
+                key={qa.label}
+                className="quick-action"
+                onClick={() => {
+                  if (!quickContext) return;
+                  patchModel((m) => {
+                    m.connections.push({
+                      id: `conexao${m.connections.length + 1}`,
+                      name: qa.label,
+                      componentId: quickContext.componentId,
+                      event: quickContext.event,
+                      kind: "message",
+                      table: m.database.tables[0]?.name ?? "",
+                      params: [],
+                      queryColumns: [],
+                      targetTableComponentId: "",
+                      openWindowId: "",
+                      closeCurrent: false,
+                      message: "",
+                      messageTitle: "",
+                      messageKind: "info",
+                      authSuccessWindowId: "",
+                      customCode: "",
+                      ...qa.build({
+                        componentId: quickContext.componentId,
+                        event: quickContext.event,
+                        table: m.database.tables[0]?.name ?? "",
+                        tables: m.database.tables.map((t) => t.name),
+                        columns: (m.database.tables[0]?.columns ?? []).map((c) => c.name),
+                        windows: m.windows.map((w) => ({ id: w.id, title: w.title })),
+                        mainWindowId: m.mainWindowId,
+                      }),
+                    });
+                  });
+                }}
+              >
+                <strong>{qa.label}</strong>
+                <small>{qa.hint}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {active ? (
         <div className="conn-form" style={{ overflowY: "auto", flex: 1 }}>
@@ -132,6 +282,11 @@ export default function ConnectionsPanel() {
                 {allComponents.map(({ comp, windowId }) => (
                   <option key={`${windowId}.${comp.id}`} value={comp.id}>
                     {comp.id} ({catalogOf(comp.type).label})
+                  </option>
+                ))}
+                {menus.map(({ item, menuId }) => (
+                  <option key={`${menuId}.${item.id}`} value={item.id}>
+                    {item.id} (menu: {item.label})
                   </option>
                 ))}
               </select>
