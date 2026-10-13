@@ -1,0 +1,6 @@
+node_modules
+dist
+target
+verify
+*.log
+.DS_Store
