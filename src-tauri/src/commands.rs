@@ -3,6 +3,7 @@ use crate::model::*;
 use crate::registry;
 use crate::templates;
 use crate::util::*;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
 use std::fs;
@@ -236,35 +237,72 @@ fn write_generated(project: &Path, files: &[codegen::GeneratedFile], warnings: &
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).ok();
         }
-        if target.exists() {
-            let current = fs::read_to_string(&target).unwrap_or_default();
-            let last_hash = manifest
-                .get(&f.path)
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if last_hash != hash_str(&current) && current != f.content {
-                let backup = format!(
-                    "{}.bak-{}",
-                    target.to_string_lossy(),
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0)
-                );
-                if fs::rename(&target, &backup).is_ok() {
-                    warnings.push(format!(
-                        "{} foi alterado por fora; cópia salva em {}",
-                        f.path,
-                        Path::new(&backup)
-                            .file_name()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default()
-                    ));
+        match &f.bytes {
+            // Arquivo binário (wrapper do Gradle): compara e escreve em bytes.
+            // Ler como String UTF-8 corromperia o jar e dispararia backup falso.
+            Some(raw) => {
+                if target.exists() {
+                    let current = fs::read(&target).unwrap_or_default();
+                    let last_hash = manifest
+                        .get(&f.path)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if last_hash != hash_str_bytes(&current) && current != *raw {
+                        let backup = format!(
+                            "{}.bak-{}",
+                            target.to_string_lossy(),
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0)
+                        );
+                        if fs::rename(&target, &backup).is_ok() {
+                            warnings.push(format!(
+                                "{} foi alterado por fora; cópia salva em {}",
+                                f.path,
+                                Path::new(&backup)
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_default()
+                            ));
+                        }
+                    }
                 }
+                fs::write(&target, raw).ok();
+                new_manifest.insert(f.path.clone(), json!(hash_str_bytes(raw)));
+            }
+            None => {
+                if target.exists() {
+                    let current = fs::read_to_string(&target).unwrap_or_default();
+                    let last_hash = manifest
+                        .get(&f.path)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if last_hash != hash_str(&current) && current != f.content {
+                        let backup = format!(
+                            "{}.bak-{}",
+                            target.to_string_lossy(),
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0)
+                        );
+                        if fs::rename(&target, &backup).is_ok() {
+                            warnings.push(format!(
+                                "{} foi alterado por fora; cópia salva em {}",
+                                f.path,
+                                Path::new(&backup)
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_default()
+                            ));
+                        }
+                    }
+                }
+                fs::write(&target, &f.content).ok();
+                new_manifest.insert(f.path.clone(), json!(hash_str(&f.content)));
             }
         }
-        fs::write(&target, &f.content).ok();
-        new_manifest.insert(f.path.clone(), json!(hash_str(&f.content)));
     }
 
     let dir = build_dir(project);
@@ -1385,4 +1423,466 @@ pub fn resolve_javac() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// ------------------------------------------------------------------------
+/// Database migration: diff model schema vs live app.db
+/// ------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnDiff {
+    pub name: String,
+    pub model_type: Option<String>,
+    pub model_not_null: Option<bool>,
+    pub model_pk: Option<bool>,
+    pub db_type: Option<String>,
+    pub db_not_null: Option<bool>,
+    pub db_pk: Option<bool>,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDiff {
+    pub name: String,
+    pub columns: Vec<ColumnDiff>,
+    pub missing_in_db: bool,
+    pub missing_in_model: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDiffResult {
+    pub tables: Vec<TableDiff>,
+    pub alter_statements: Vec<String>,
+    pub destructive: Vec<String>,
+}
+
+fn read_live_schema(project: &Path, model: &AppModel) -> Result<Vec<TableSpec>, String> {
+    let db_path = project.join(&model.database.file);
+    if !db_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let root = build_dir(project);
+    let tools = root.join("tools");
+    let out_dir = root.join("out-sql");
+
+    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
+    let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'javaforge_%' ORDER BY name";
+    let sql_file = tools.join("list_tables.sql");
+    fs::write(&sql_file, sql).map_err(|e| e.to_string())?;
+
+    ensure_tool(
+        project,
+        &tools,
+        "SqlTool",
+        SQL_TOOL_JAVA,
+        &out_dir,
+        "javac não encontrado. Instale o JDK 17+ (JAVA_HOME) para usar o banco.",
+    )?;
+
+    let jar = ensure_driver_jar(project).map_err(|e| e.to_string())?;
+    let run = std::process::Command::new("java")
+        .arg("-cp")
+        .arg(format!(
+            "{};{}",
+            out_dir.to_string_lossy(),
+            jar.to_string_lossy()
+        ))
+        .arg("SqlTool")
+        .arg(&sql_file)
+        .arg(&db_path)
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| format!("Falha ao listar tabelas: {}", e))?;
+
+    if !run.status.success() {
+        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+        return Err(format!("Falha ao listar tabelas: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+    let mut table_names: Vec<String> = Vec::new();
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("ROW\t") {
+            let name = rest.split('\t').next().unwrap_or("").to_string();
+            if !name.is_empty() {
+                table_names.push(name);
+            }
+        }
+    }
+
+    let mut live_tables: Vec<TableSpec> = Vec::new();
+    for table_name in table_names {
+        let pragma_sql = format!("PRAGMA table_info(\"{}\")", table_name);
+        let sql_file = tools.join("table_info.sql");
+        fs::write(&sql_file, pragma_sql).map_err(|e| e.to_string())?;
+
+        let run = std::process::Command::new("java")
+            .arg("-cp")
+            .arg(format!(
+                "{};{}",
+                out_dir.to_string_lossy(),
+                jar.to_string_lossy()
+            ))
+            .arg("SqlTool")
+            .arg(&sql_file)
+            .arg(&db_path)
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| format!("Falha ao ler schema: {}", e))?;
+
+        if !run.status.success() {
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let mut columns: Vec<ColumnSpec> = Vec::new();
+        for line in stdout.lines() {
+            if let Some(rest) = line.strip_prefix("ROW\t") {
+                let parts: Vec<&str> = rest.split('\t').collect();
+                if parts.len() >= 6 {
+                    let name = parts[1].to_string();
+                    let col_type = parts[2].to_uppercase();
+                    let not_null = parts[3] == "1";
+                    let pk = parts[5] == "1";
+
+                    let sql_type = match col_type.as_str() {
+                        "INTEGER" | "INT" => SqlType::Integer,
+                        "TEXT" | "VARCHAR" | "CHAR" => SqlType::Text,
+                        "REAL" | "FLOAT" | "DOUBLE" => SqlType::Real,
+                        "BLOB" => SqlType::Blob,
+                        _ => SqlType::Text,
+                    };
+
+                    let is_auto = pk && sql_type == SqlType::Integer;
+
+                    columns.push(ColumnSpec {
+                        name,
+                        col_type: sql_type,
+                        pk,
+                        not_null,
+                        auto_increment: is_auto,
+                        refs_table: String::new(),
+                        refs_column: String::new(),
+                    });
+                }
+            }
+        }
+
+        let fk_sql = format!("PRAGMA foreign_key_list(\"{}\")", table_name);
+        let fk_file = tools.join("fk_info.sql");
+        fs::write(&fk_file, fk_sql).map_err(|e| e.to_string())?;
+
+        let fk_run = std::process::Command::new("java")
+            .arg("-cp")
+            .arg(format!(
+                "{};{}",
+                out_dir.to_string_lossy(),
+                jar.to_string_lossy()
+            ))
+            .arg("SqlTool")
+            .arg(&fk_file)
+            .arg(&db_path)
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| format!("Falha ao ler FKs: {}", e))?;
+
+        if fk_run.status.success() {
+            let fk_out = String::from_utf8_lossy(&fk_run.stdout).to_string();
+            for line in fk_out.lines() {
+                if let Some(rest) = line.strip_prefix("ROW\t") {
+                    let parts: Vec<&str> = rest.split('\t').collect();
+                    if parts.len() >= 5 {
+                        let from_col = parts[3].to_string();
+                        let to_table = parts[2].to_string();
+                        let to_col = parts[4].to_string();
+                        for col in &mut columns {
+                            if col.name == from_col {
+                                col.refs_table = to_table;
+                                col.refs_column = to_col;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        live_tables.push(TableSpec {
+            name: table_name,
+            columns,
+            seed_rows: Vec::new(),
+        });
+    }
+
+    Ok(live_tables)
+}
+
+#[tauri::command]
+pub fn db_schema_diff(project_dir: String) -> Result<SchemaDiffResult, String> {
+    let project = PathBuf::from(&project_dir);
+    let model = read_model(&project)?;
+    let live_tables = read_live_schema(&project, &model)?;
+
+    let mut diffs: Vec<TableDiff> = Vec::new();
+    let mut alter_statements: Vec<String> = Vec::new();
+    let mut destructive: Vec<String> = Vec::new();
+
+    let model_tables: std::collections::HashMap<String, &TableSpec> =
+        model.database.tables.iter().map(|t| (t.name.clone(), t)).collect();
+    let live_table_map: std::collections::HashMap<String, &TableSpec> =
+        live_tables.iter().map(|t| (t.name.clone(), t)).collect();
+
+    for model_table in &model.database.tables {
+        if let Some(live_table) = live_table_map.get(&model_table.name) {
+            let mut col_diffs: Vec<ColumnDiff> = Vec::new();
+
+            let model_cols: std::collections::HashMap<String, &ColumnSpec> =
+                model_table.columns.iter().map(|c| (c.name.clone(), c)).collect();
+            let live_cols: std::collections::HashMap<String, &ColumnSpec> =
+                live_table.columns.iter().map(|c| (c.name.clone(), c)).collect();
+
+            for model_col in &model_table.columns {
+                if let Some(live_col) = live_cols.get(&model_col.name) {
+                    let mut actions: Vec<String> = Vec::new();
+                    if format!("{:?}", model_col.col_type) != format!("{:?}", live_col.col_type) {
+                        actions.push("type_changed".to_string());
+                    }
+                    if model_col.not_null != live_col.not_null {
+                        actions.push("not_null_changed".to_string());
+                    }
+                    if model_col.pk != live_col.pk {
+                        actions.push("pk_changed".to_string());
+                    }
+
+                    if actions.is_empty() {
+                    } else {
+                        for action in actions {
+                            col_diffs.push(ColumnDiff {
+                                name: model_col.name.clone(),
+                                model_type: Some(format!("{:?}", model_col.col_type)),
+                                model_not_null: Some(model_col.not_null),
+                                model_pk: Some(model_col.pk),
+                                db_type: Some(format!("{:?}", live_col.col_type)),
+                                db_not_null: Some(live_col.not_null),
+                                db_pk: Some(live_col.pk),
+                                action: action.clone(),
+                            });
+
+                            match action.as_str() {
+                                "type_changed" => {
+                                    destructive.push(format!(
+                                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE {} (requer recriação da tabela)",
+                                        model_table.name, model_col.name,
+                                        match model_col.col_type {
+                                            SqlType::Integer => "INTEGER",
+                                            SqlType::Text => "TEXT",
+                                            SqlType::Real => "REAL",
+                                            SqlType::Blob => "BLOB",
+                                        }
+                                    ));
+                                }
+                                "not_null_changed" => {
+                                    if model_col.not_null && !live_col.not_null {
+                                        let stmt = format!(
+                                            r#"ALTER TABLE "{}" ALTER COLUMN "{}" SET NOT NULL"#,
+                                            model_table.name, model_col.name
+                                        );
+                                        alter_statements.push(stmt);
+                                    } else if !model_col.not_null && live_col.not_null {
+                                        let stmt = format!(
+                                            r#"ALTER TABLE "{}" ALTER COLUMN "{}" DROP NOT NULL"#,
+                                            model_table.name, model_col.name
+                                        );
+                                        alter_statements.push(stmt);
+                                    }
+                                }
+                                "pk_changed" => {
+                                    destructive.push(format!(
+                                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" PRIMARY KEY (requer recriação da tabela)",
+                                        model_table.name, model_col.name
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                } else {
+                    col_diffs.push(ColumnDiff {
+                        name: model_col.name.clone(),
+                        model_type: Some(format!("{:?}", model_col.col_type)),
+                        model_not_null: Some(model_col.not_null),
+                        model_pk: Some(model_col.pk),
+                        db_type: None,
+                        db_not_null: None,
+                        db_pk: None,
+                        action: "added".to_string(),
+                    });
+
+                    let sql_type = match model_col.col_type {
+                        SqlType::Integer => "INTEGER",
+                        SqlType::Text => "TEXT",
+                        SqlType::Real => "REAL",
+                        SqlType::Blob => "BLOB",
+                    };
+                    let mut col_def = format!(r#""{}" {}"#, model_col.name, sql_type);
+                    if model_col.not_null {
+                        col_def = format!("{} NOT NULL", col_def);
+                    }
+                    if model_col.pk && model_col.auto_increment && model_col.col_type == SqlType::Integer {
+                        col_def = format!("{} PRIMARY KEY AUTOINCREMENT", col_def);
+                    } else if model_col.pk {
+                        col_def = format!("{} PRIMARY KEY", col_def);
+                    }
+                    let stmt = format!(r#"ALTER TABLE "{}" ADD COLUMN {}"#, model_table.name, col_def);
+                    alter_statements.push(stmt);
+
+                    if !model_col.refs_table.trim().is_empty() {
+                        let target = if model_col.refs_column.trim().is_empty() {
+                            "id".to_string()
+                        } else {
+                            model_col.refs_column.clone()
+                        };
+                        let index_name = format!("idx_{}_{}", model_table.name, model_col.name);
+                        alter_statements.push(format!(
+                            r#"CREATE INDEX IF NOT EXISTS "{}" ON "{}" ("{}")"#,
+                            index_name, model_table.name, model_col.name
+                        ));
+                        alter_statements.push(format!(
+                            r#"ALTER TABLE "{}" ADD FOREIGN KEY ("{}") REFERENCES "{}" ("{}")"#,
+                            model_table.name, model_col.name, model_col.refs_table, target
+                        ));
+                    }
+                }
+            }
+
+            for live_col in &live_table.columns {
+                if !model_cols.contains_key(&live_col.name) {
+                    col_diffs.push(ColumnDiff {
+                        name: live_col.name.clone(),
+                        model_type: None,
+                        model_not_null: None,
+                        model_pk: None,
+                        db_type: Some(format!("{:?}", live_col.col_type)),
+                        db_not_null: Some(live_col.not_null),
+                        db_pk: Some(live_col.pk),
+                        action: "removed".to_string(),
+                    });
+                    destructive.push(format!(
+                        r#"ALTER TABLE "{}" DROP COLUMN "{}" (requer recriação da tabela)"#,
+                        model_table.name, live_col.name
+                    ));
+                }
+            }
+
+            diffs.push(TableDiff {
+                name: model_table.name.clone(),
+                columns: col_diffs,
+                missing_in_db: false,
+                missing_in_model: false,
+            });
+        } else {
+            diffs.push(TableDiff {
+                name: model_table.name.clone(),
+                columns: model_table.columns.iter().map(|c| ColumnDiff {
+                    name: c.name.clone(),
+                    model_type: Some(format!("{:?}", c.col_type)),
+                    model_not_null: Some(c.not_null),
+                    model_pk: Some(c.pk),
+                    db_type: None,
+                    db_not_null: None,
+                    db_pk: None,
+                    action: "added".to_string(),
+                }).collect(),
+                missing_in_db: true,
+                missing_in_model: false,
+            });
+        }
+    }
+
+    for live_table in &live_tables {
+        if !model_tables.contains_key(&live_table.name) {
+            diffs.push(TableDiff {
+                name: live_table.name.clone(),
+                columns: live_table.columns.iter().map(|c| ColumnDiff {
+                    name: c.name.clone(),
+                    model_type: None,
+                    model_not_null: None,
+                    model_pk: None,
+                    db_type: Some(format!("{:?}", c.col_type)),
+                    db_not_null: Some(c.not_null),
+                    db_pk: Some(c.pk),
+                    action: "removed".to_string(),
+                }).collect(),
+                missing_in_db: false,
+                missing_in_model: true,
+            });
+            destructive.push(format!(r#"DROP TABLE "{}" (tabela existe no banco mas não no modelo)"#, live_table.name));
+        }
+    }
+
+    Ok(SchemaDiffResult {
+        tables: diffs,
+        alter_statements,
+        destructive,
+    })
+}
+
+#[tauri::command]
+pub fn db_apply_migration(project_dir: String, statements: Vec<String>) -> Result<Vec<String>, String> {
+    let project = PathBuf::from(&project_dir);
+    let model = read_model(&project)?;
+    let db_path = project.join(&model.database.file);
+
+    if !db_path.exists() {
+        return Err("Banco de dados não encontrado. Use 'Aplicar ao banco' primeiro.".to_string());
+    }
+
+    let root = build_dir(&project);
+    let tools = root.join("tools");
+    let out_dir = root.join("out-sql");
+
+    fs::create_dir_all(&tools).map_err(|e| e.to_string())?;
+
+    let jar = ensure_driver_jar(&project).map_err(|e| e.to_string())?;
+
+    ensure_tool(
+        &project,
+        &tools,
+        "SqlTool",
+        SQL_TOOL_JAVA,
+        &out_dir,
+        "javac não encontrado. Instale o JDK 17+ (JAVA_HOME) para usar o banco.",
+    )?;
+
+    let mut results = Vec::new();
+    for stmt in statements {
+        let sql_file = tools.join("migration.sql");
+        fs::write(&sql_file, &stmt).map_err(|e| e.to_string())?;
+
+        let run = std::process::Command::new("java")
+            .arg("-cp")
+            .arg(format!(
+                "{};{}",
+                out_dir.to_string_lossy(),
+                jar.to_string_lossy()
+            ))
+            .arg("SqlTool")
+            .arg(&sql_file)
+            .arg(&db_path)
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| format!("Falha ao executar migração: {}", e))?;
+
+        if !run.status.success() {
+            let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+            return Err(format!("Falha na migração: {}", stderr));
+        }
+        results.push(format!("OK: {}", stmt));
+    }
+
+    Ok(results)
 }

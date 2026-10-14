@@ -13,6 +13,7 @@ import PropertiesPanel from "../panels/PropertiesPanel";
 import ConnectionsPanel from "../panels/ConnectionsPanel";
 import DataPanel from "../panels/DataPanel";
 import DatabasePanel from "../panels/DatabasePanel";
+import MigrationPanel from "../panels/MigrationPanel";
 import OutputPanel from "../panels/OutputPanel";
 import GuideModal from "../GuideModal";
 
@@ -148,12 +149,21 @@ export default function IDE() {
             >
               Banco
             </button>
+            <button
+              className={`side-tab ${rightTab === "migration" ? "active" : ""}`}
+              onClick={() => store.setState({ rightTab: "migration" })}
+              role="tab"
+              aria-selected={rightTab === "migration"}
+            >
+              Migração
+            </button>
           </div>
           <div className="side-content">
             {rightTab === "props" && <PropertiesPanel />}
             {rightTab === "connections" && <ConnectionsPanel />}
             {rightTab === "data" && <DataPanel />}
             {rightTab === "sql" && <DatabasePanel />}
+            {rightTab === "migration" && <MigrationPanel />}
           </div>
         </aside>
       </div>

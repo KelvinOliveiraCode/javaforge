@@ -24,7 +24,10 @@ fn write_project(dir: &PathBuf, model: &AppModel) {
     for f in &files {
         let target = dir.join(f.path.replace('/', "\\"));
         fs::create_dir_all(target.parent().unwrap()).unwrap();
-        fs::write(&target, &f.content).unwrap();
+        match &f.bytes {
+            Some(raw) => fs::write(&target, raw).unwrap(),
+            None => fs::write(&target, &f.content).unwrap(),
+        }
     }
     fs::create_dir_all(dir.join("build").join("lib")).unwrap();
     fs::write(
@@ -119,6 +122,7 @@ fn base_model(name: &str) -> AppModel {
             tables: Vec::new(),
         },
         connections: Vec::new(),
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -407,6 +411,106 @@ fn templates_compile() {
             "{kind}: app.db não foi criado"
         );
     }
+}
+
+/// Garante que o projeto gerado compila pelo Gradle quando ele está disponível.
+/// O wrapper baixa a distribuição na primeira uso; sem Gradle na máquina o
+/// teste apenas confere que os arquivos foram gerados.
+fn gradle_compile(dir: &PathBuf, label: &str) {
+    for required in ["build.gradle", "settings.gradle", "gradlew", "gradlew.cmd"] {
+        assert!(
+            dir.join(required).exists(),
+            "{label}: {required} não foi gerado"
+        );
+    }
+    // O wrapper properties tem que apontar para uma distribuição real.
+    let props = fs::read_to_string(dir.join("gradle").join("wrapper").join("gradle-wrapper.properties"))
+        .expect("gradle-wrapper.properties ausente");
+    assert!(
+        props.contains("distributionUrl"),
+        "{label}: distributionUrl ausente no wrapper"
+    );
+
+    // "compile" é ambíguo no Gradle (compileJava/compileTestJava): a task
+    // certa é compileJava. "run" é o que o app usa de verdade (compila e
+    // executa) e exige interface gráfica, então fica de fora do teste.
+    //
+    // O veredito vem da SAÍDA, não do exit code: o gradlew.cmd do Windows
+    // encerra com 1 mesmo depois de "BUILD SUCCESSFUL" quando o daemon
+    // devolve a saída por pipe.
+    let out = Command::new(dir.join("gradlew.cmd"))
+        .args(["compileJava"])
+        .current_dir(dir)
+        .output();
+    match out {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let combined = format!("{stdout}{stderr}");
+            if combined.contains("BUILD SUCCESSFUL") || o.status.success() {
+                return;
+            }
+            // Sem rede/cache o Gradle não baixa a distribuição nem a
+            // dependência: isso não é defeito do codegen.
+            if combined.contains("No cached version")
+                || combined.contains("offline mode")
+                || combined.contains("Could not resolve")
+                || combined.contains("Could not download")
+                || combined.contains("Connection")
+                || combined.contains("UnknownHostException")
+            {
+                eprintln!("{label}: Gradle sem rede/cache, compilacao pulada");
+            } else {
+                panic!("{label}: gradle compileJava falhou:\n{combined}");
+            }
+        }
+        Err(e) => eprintln!("gradlew indisponivel ({e}), verificacao pulada"),
+    }
+}
+
+/// O Gradle tem de gerar o mesmo código Java que o Maven, com o build file
+/// no lugar e nada de pom.xml sobrando.
+#[test]
+fn gradle_project_compiles() {
+    for kind in ["blank", "login", "crud"] {
+        let dir = scratch(&format!("gradle-{kind}"));
+        let mut model = templates::template_model(kind, "App Teste", "com.teste.app");
+        model.build_tool = BuildTool::Gradle;
+        write_project(&dir, &model);
+
+        assert!(
+            dir.join("build.gradle").exists(),
+            "{kind}: build.gradle ausente com BuildTool::Gradle"
+        );
+        assert!(
+            !dir.join("pom.xml").exists(),
+            "{kind}: pom.xml nao deveria existir com BuildTool::Gradle"
+        );
+
+        let build_gradle = fs::read_to_string(dir.join("build.gradle")).unwrap();
+        assert!(
+            build_gradle.contains("sqlite-jdbc"),
+            "{kind}: build.gradle sem a dependencia do sqlite-jdbc"
+        );
+
+        // O mesmo código Java gerado precisa compilar.
+        compile(&dir, kind);
+        gradle_compile(&dir, kind);
+    }
+}
+
+/// BuildTool::None não gera pom nem build.gradle: o projeto só compila
+/// pelo caminho javac puro.
+#[test]
+fn build_tool_none_generates_no_build_file() {
+    let dir = scratch("gradle-none");
+    let mut model = templates::template_model("crud", "App Teste", "com.teste.app");
+    model.build_tool = BuildTool::None;
+    write_project(&dir, &model);
+
+    assert!(!dir.join("pom.xml").exists(), "pom.xml nao deveria existir");
+    assert!(!dir.join("build.gradle").exists(), "build.gradle nao deveria existir");
+    compile(&dir, "none");
 }
 
 /// A mesma coluna como "campo a alterar" e como filtro precisa gerar Java válido.

@@ -6,6 +6,12 @@ pub const MVNW_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw");
 pub const MVNW_CMD_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw.cmd");
 pub const MVNW_PROPS_BYTES: &[u8] =
     include_bytes!("../../vendor/mvnw/.mvn/wrapper/maven-wrapper.properties");
+pub const GRADLEW_BYTES: &[u8] = include_bytes!("../../vendor/gradle/gradlew");
+pub const GRADLEW_CMD_BYTES: &[u8] = include_bytes!("../../vendor/gradle/gradlew.cmd");
+pub const GRADLEW_PROPS_BYTES: &[u8] =
+    include_bytes!("../../vendor/gradle/wrapper/gradle-wrapper.properties");
+pub const GRADLE_WRAPPER_JAR_BYTES: &[u8] =
+    include_bytes!("../../vendor/gradle/wrapper/gradle-wrapper.jar");
 
 /// Pasta de trabalho do JavaForge dentro de um projeto gerado.
 ///
@@ -39,8 +45,13 @@ pub fn ensure_driver_jar(project: &Path) -> std::io::Result<PathBuf> {
 }
 
 pub fn hash_str(value: &str) -> String {
+    hash_str_bytes(value.as_bytes())
+}
+
+/// Mesmo SHA-256, para conteúdo binário (wrapper do Gradle).
+pub fn hash_str_bytes(value: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(value.as_bytes());
+    hasher.update(value);
     format!("{:x}", hasher.finalize())
 }
 

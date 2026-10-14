@@ -1,5 +1,7 @@
 // Contratos compartilhados entre frontend e backend Rust (serde espelha estes tipos).
 
+export type BuildTool = "maven" | "gradle" | "none";
+
 export type ComponentType =
   | "JLabel"
   | "JButton"
@@ -128,6 +130,7 @@ export interface AppModel {
   windows: WindowSpec[];
   database: DatabaseSpec;
   connections: ConnectionSpec[];
+  buildTool: BuildTool;
 }
 
 export interface ProjectEntry {
@@ -179,4 +182,28 @@ export interface DbQueryResult {
   rows: string[][];
   affected: number | null;
   error: string | null;
+}
+
+export interface ColumnDiff {
+  name: string;
+  modelType?: string;
+  modelNotNull?: boolean;
+  modelPk?: boolean;
+  dbType?: string;
+  dbNotNull?: boolean;
+  dbPk?: boolean;
+  action: string;
+}
+
+export interface TableDiff {
+  name: string;
+  columns: ColumnDiff[];
+  missingInDb: boolean;
+  missingInModel: boolean;
+}
+
+export interface SchemaDiffResult {
+  tables: TableDiff[];
+  alterStatements: string[];
+  destructive: string[];
 }

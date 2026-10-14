@@ -49,8 +49,10 @@ npm run tauri dev
 ```
 
 Requisitos: Node 18+, Rust (stable), JDK 17+ com `JAVA_HOME` (o app usa javac/java para
-compilar e rodar os projetos gerados). Maven é opcional: se estiver no PATH ele é usado;
-sem Maven, a compilação usa `javac` com o driver SQLite que vem embutido no app.
+compilar e rodar os projetos gerados). **Maven ou Gradle são opcionais**: se estiverem no PATH
+eles são usados; sem nenhum dos dois, a compilação usa `javac` com o driver SQLite que vem
+embutido no app. A ferramenta de build é escolhida por projeto (Maven, Gradle ou nenhum) e
+salva no `app.model.json`.
 
 ## Como gerar o instalador
 
@@ -65,12 +67,12 @@ Saída em `src-tauri/target/release/bundle/` (NSIS e MSI).
 ```
 src-tauri/src/
   model.rs        tipos do modelo (serde, espelho de src/types.ts)
-  codegen.rs      gera Main/Schema/Database/<Janela>.java, pom.xml e wrapper Maven
+  codegen.rs      gera Main/Schema/Database/<Janela>.java, pom.xml / build.gradle + wrappers
   templates.rs    modelos iniciais (branco, login, CRUD, tarefas, contatos, calculadora)
   commands.rs     comandos Tauri: projetos, arquivos, modelo, validação, banco
-  runner.rs       compila e executa o projeto gerado (Maven/javac) com saída ao vivo
+  runner.rs       compila e executa o projeto gerado (Maven/Gradle/javac) com saída ao vivo
   registry.rs     registro de projetos recentes (JSON em %APPDATA%)
-  util.rs         identificadores Java, escapes, driver SQLite embutido
+  util.rs         identificadores Java, escapes, drivers SQLite/Maven/Gradle embutidos
 src/
   start/          tela inicial e modal de criação
   ide/            cascos da IDE (barra de título, status, atalhos)
@@ -82,14 +84,19 @@ src/
 ```
 
 O `app.model.json` na raiz de cada projeto é a fonte da verdade: telas, componentes,
-conexões e banco. Salvar o modelo regera o código Java.
+conexões, banco e **ferramenta de build**. Salvar o modelo regera o código Java.
 
 ### Estrutura do projeto gerado
 
 ```
 MeuApp/
-├── pom.xml                      projeto Maven (dependência do sqlite-jdbc já incluída)
+├── pom.xml                      projeto Maven (se Maven selecionado)
 ├── mvnw, mvnw.cmd, .mvn/        Maven Wrapper
+├── build.gradle                 projeto Gradle (se Gradle selecionado)
+├── settings.gradle              configuração do Gradle
+├── gradle.properties            propriedades do Gradle
+├── gradlew, gradlew.cmd         Gradle Wrapper
+├── gradle/wrapper/              arquivos do wrapper
 ├── README.md, .gitignore
 ├── app.model.json               modelo visual (fonte da verdade)
 ├── src/main/java/<pacote>/
@@ -99,12 +106,12 @@ MeuApp/
 │   └── ui/*Window.java          uma classe por janela
 ├── data/app.db                  banco SQLite (criado no primeiro uso)
 └── build/                       pasta de trabalho do JavaForge
-    ├── lib/sqlite-jdbc.jar      driver usado quando não há Maven
+    ├── lib/sqlite-jdbc.jar      driver usado quando não há Maven/Gradle
     ├── tools/                   ferramentas auxiliares (SchemaTool, SqlTool, DDL, seed)
     └── out/, out-sql/           classes compiladas dessas ferramentas
 ```
 
-`build/`, `data/` e `target/` estão no `.gitignore` gerado. Projetos criados em
+`build/`, `data/`, `target/` e `.gradle/` estão no `.gitignore` gerado. Projetos criados em
 versões anteriores usavam `.javaforge`, `lib/` e `app.db` na raiz: eles continuam
 abrindo e funcionando do mesmo jeito.
 

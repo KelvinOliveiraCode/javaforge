@@ -8,6 +8,7 @@ import type {
   Problem,
   ProjectEntry,
   TreeNode,
+  SchemaDiffResult,
 } from "./types";
 
 export const api = {
@@ -40,7 +41,8 @@ export const api = {
   deletePath: (path: string) => invoke<void>("fs_delete", { path }),
   renamePath: (oldPath: string, newPath: string) => invoke<void>("fs_rename", { oldPath, newPath }),
 
-  modelLoad: (path: string) => invoke<AppModel>("model_load", { projectDir: path }),  modelSave: (path: string, model: AppModel) =>
+  modelLoad: (path: string) => invoke<AppModel>("model_load", { projectDir: path }),
+  modelSave: (path: string, model: AppModel) =>
     invoke<void>("model_save", { projectDir: path, model }),
   validate: (model: AppModel) => invoke<Problem[]>("validate_model", { model }),
 
@@ -50,6 +52,9 @@ export const api = {
   dbSql: (path: string, sql: string) =>
     invoke<DbQueryResult>("db_sql", { projectDir: path, sql }),
   dbDdl: (path: string) => invoke<string[]>("db_ddl", { projectDir: path }),
+  dbSchemaDiff: (path: string) => invoke<SchemaDiffResult>("db_schema_diff", { projectDir: path }),
+  dbApplyMigration: (path: string, statements: string[]) =>
+    invoke<string[]>("db_apply_migration", { projectDir: path, statements }),
 
   runStart: (path: string) => invoke<void>("run_start", { projectDir: path }),
   runStop: () => invoke<void>("run_stop"),

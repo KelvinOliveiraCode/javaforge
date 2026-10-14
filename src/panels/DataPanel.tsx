@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { applyDb, patchModel } from "../actions";
 import { useStore, showToast } from "../store";
-import type { ColumnSpec, SqlType, TableSpec } from "../types";
+import type { BuildTool, ColumnSpec, SqlType, TableSpec } from "../types";
 
 const SQL_TYPES: SqlType[] = ["INTEGER", "TEXT", "REAL", "BLOB"];
+const BUILD_TOOLS: { value: BuildTool; label: string }[] = [
+  { value: "maven", label: "Maven" },
+  { value: "gradle", label: "Gradle" },
+  { value: "none", label: "Nenhum (apenas javac)" },
+];
 
 export default function DataPanel() {
   const model = useStore((s) => s.model);
@@ -40,6 +45,26 @@ export default function DataPanel() {
           value={model.database.file}
           onChange={(e) => patchModel((m) => { m.database.file = e.target.value; })}
         />
+      </div>
+
+      <div className="field">
+        <label>Ferramenta de build</label>
+        <select
+          className="select"
+          value={model.buildTool}
+          onChange={(e) => patchModel((m) => { m.buildTool = e.target.value as BuildTool; })}
+        >
+          {BUILD_TOOLS.map((bt) => (
+            <option key={bt.value} value={bt.value}>
+              {bt.label}
+            </option>
+          ))}
+        </select>
+        <span className="panel-hint" style={{ marginTop: 4, display: "block" }}>
+          {model.buildTool === "maven" && "Gera pom.xml + Maven Wrapper (mvnw/mvnw.cmd)."}
+          {model.buildTool === "gradle" && "Gera build.gradle + settings.gradle + Gradle Wrapper (gradlew/gradlew.cmd)."}
+          {model.buildTool === "none" && "Não gera arquivos de build; usa javac direto com driver SQLite embutido."}
+        </span>
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>

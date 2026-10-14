@@ -45,7 +45,7 @@ export interface State {
   selectedComponentId: string | null;
   centerTab: string;
   openTabs: EditorTab[];
-  rightTab: "props" | "connections" | "data" | "sql";
+  rightTab: "props" | "connections" | "data" | "sql" | "migration";
   output: OutputLine[];
   running: boolean;
   problems: Problem[];
@@ -64,6 +64,7 @@ export function initialModel(): AppModel {
     windows: [],
     database: { file: "data/app.db", tables: [] },
     connections: [],
+    buildTool: "maven",
   };
 }
 
@@ -95,6 +96,8 @@ const initial: State = {
 
 const LIMITE_HISTORICO = 100;
 const JANELA_COALESCENCIA = 700;
+
+export { LIMITE_HISTORICO, JANELA_COALESCENCIA };
 
 type Listener = () => void;
 

@@ -182,6 +182,7 @@ fn blank_template(name: &str, package_name: &str) -> AppModel {
             )],
         },
         connections: vec![],
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -291,6 +292,7 @@ fn login_template(name: &str, package_name: &str) -> AppModel {
             )],
         },
         connections: vec![entrar, cancelar, sair],
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -404,6 +406,7 @@ fn crud_template(name: &str, package_name: &str) -> AppModel {
             )],
         },
         connections: vec![buscar, novo, salvar, excluir],
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -552,6 +555,7 @@ fn tarefas_template(name: &str, package_name: &str) -> AppModel {
             ],
         },
         connections: vec![adicionar, listar, excluir, renomear],
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -627,6 +631,7 @@ fn calculadora_template(name: &str, package_name: &str) -> AppModel {
             tables: Vec::new(),
         },
         connections: vec![calcular],
+        build_tool: BuildTool::Maven,
     }
 }
 
@@ -732,6 +737,7 @@ fn contatos_template(name: &str, package_name: &str) -> AppModel {
             )],
         },
         connections: vec![pesquisar, salvar, excluir],
+        build_tool: BuildTool::Maven,
     }
 }
 

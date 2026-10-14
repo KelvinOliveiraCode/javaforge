@@ -4,6 +4,30 @@ use crate::util::*;
 pub struct GeneratedFile {
     pub path: String,
     pub content: String,
+    /// Conteúdo binário, escrito direto em disco. O wrapper do Gradle é um
+    /// jar: passar por String UTF-8 corromperia qualquer byte fora do UTF-8
+    /// (e faria o wrapper falhar com ClassNotFoundException).
+    pub bytes: Option<Vec<u8>>,
+}
+
+impl Default for GeneratedFile {
+    fn default() -> Self {
+        Self { path: String::new(), content: String::new(), bytes: None }
+    }
+}
+
+impl GeneratedFile {
+    pub fn text(path: &str, content: String) -> Self {
+        Self { path: path.to_string(), content, bytes: None }
+    }
+
+    pub fn binary(path: &str, bytes: &[u8]) -> Self {
+        Self {
+            path: path.to_string(),
+            content: String::new(),
+            bytes: Some(bytes.to_vec()),
+        }
+    }
 }
 
 struct DbMethod {
@@ -51,50 +75,91 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
 
     let plan = plan_database(model, &mut warnings);
 
-    files.push(GeneratedFile {
-        path: format!("src/main/java/{}/Main.java", pkg_path),
-        content: gen_main(model, &main_class, &class_names),
-    });
-    files.push(GeneratedFile {
-        path: format!("src/main/java/{}/db/Schema.java", pkg_path),
-        content: gen_schema(model),
-    });
-    files.push(GeneratedFile {
-        path: format!("src/main/java/{}/db/Database.java", pkg_path),
-        content: gen_database(model, &plan),
-    });
+    files.push(GeneratedFile::text(
+        &format!("src/main/java/{}/Main.java", pkg_path),
+        gen_main(model, &main_class, &class_names),
+    ));
+    files.push(GeneratedFile::text(
+        &format!("src/main/java/{}/db/Schema.java", pkg_path),
+        gen_schema(model),
+    ));
+    files.push(GeneratedFile::text(
+        &format!("src/main/java/{}/db/Database.java", pkg_path),
+        gen_database(model, &plan),
+    ));
 
     for (idx, win) in model.windows.iter().enumerate() {
-        files.push(GeneratedFile {
-            path: format!("src/main/java/{}/ui/{}.java", pkg_path, class_names[idx]),
-            content: gen_window(model, win, &class_names, &plan, &mut warnings),
-        });
+        files.push(GeneratedFile::text(
+            &format!("src/main/java/{}/ui/{}.java", pkg_path, class_names[idx]),
+            gen_window(model, win, &class_names, &plan, &mut warnings),
+        ));
     }
 
-    files.push(GeneratedFile {
-        path: "pom.xml".to_string(),
-        content: gen_pom(model),
-    });
+    // pom.xml NÃO é gerado aqui: quem decide é o match de build_tool
+    // abaixo, senão um projeto Gradle (ou sem build file) receberia um
+    // pom.xml órfão que ninguém usa.
     files.push(GeneratedFile {
         path: "README.md".to_string(),
-        content: gen_readme(model),
+        content: gen_readme(model), bytes: None,
     });
     files.push(GeneratedFile {
         path: ".gitignore".to_string(),
-        content: "target/\nbuild/\ndata/\n*.class\n*.db\n".to_string(),
+        content: "target/\nbuild/\ndata/\n*.class\n*.db\n.gradle/\n".to_string(), bytes: None,
     });
-    files.push(GeneratedFile {
-        path: "mvnw".to_string(),
-        content: String::from_utf8_lossy(MVNW_BYTES).to_string(),
-    });
-    files.push(GeneratedFile {
-        path: "mvnw.cmd".to_string(),
-        content: String::from_utf8_lossy(MVNW_CMD_BYTES).to_string(),
-    });
-    files.push(GeneratedFile {
-        path: ".mvn/wrapper/maven-wrapper.properties".to_string(),
-        content: String::from_utf8_lossy(MVNW_PROPS_BYTES).to_string(),
-    });
+
+    match model.build_tool {
+        BuildTool::Maven => {
+            files.push(GeneratedFile {
+                path: "pom.xml".to_string(),
+                content: gen_pom(model), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "mvnw".to_string(),
+                content: String::from_utf8_lossy(MVNW_BYTES).to_string(), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "mvnw.cmd".to_string(),
+                content: String::from_utf8_lossy(MVNW_CMD_BYTES).to_string(), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: ".mvn/wrapper/maven-wrapper.properties".to_string(),
+                content: String::from_utf8_lossy(MVNW_PROPS_BYTES).to_string(), bytes: None,
+            });
+        }
+        BuildTool::Gradle => {
+            files.push(GeneratedFile {
+                path: "build.gradle".to_string(),
+                content: gen_build_gradle(model), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "settings.gradle".to_string(),
+                content: gen_settings_gradle(model), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "gradle.properties".to_string(),
+                content: gen_gradle_properties(model), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "gradlew".to_string(),
+                content: String::from_utf8_lossy(GRADLEW_BYTES).to_string(), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "gradlew.cmd".to_string(),
+                content: String::from_utf8_lossy(GRADLEW_CMD_BYTES).to_string(), bytes: None,
+            });
+            files.push(GeneratedFile {
+                path: "gradle/wrapper/gradle-wrapper.properties".to_string(),
+                content: String::from_utf8_lossy(GRADLEW_PROPS_BYTES).to_string(), bytes: None,
+            });
+            files.push(GeneratedFile::binary(
+                "gradle/wrapper/gradle-wrapper.jar",
+                GRADLE_WRAPPER_JAR_BYTES,
+            ));
+        }
+        BuildTool::None => {
+            // No build tool files - pure javac fallback
+        }
+    }
 
     Ok(files)
 }
@@ -1879,6 +1944,18 @@ fn gen_pom(model: &AppModel) -> String {
 
 fn gen_readme(model: &AppModel) -> String {
     let artifact = sanitize_folder_name(&model.name).to_lowercase().replace(' ', "-");
+    let (build_instructions, _wrapper_cmd, package_cmd) = match model.build_tool {
+        BuildTool::Gradle => (
+            "Com Gradle instalado:\n\n```\ngradle run\n```\n\nOu com o Gradle Wrapper incluído (não precisa de Gradle instalado):\n\n```\n./gradlew run\n```",
+            "./gradlew",
+            format!("./gradlew jar\njava -jar build/libs/{}.jar", artifact),
+        ),
+        _ => (
+            "Com Maven instalado:\n\n```\nmvn compile exec:java\n```\n\nOu com o Maven Wrapper incluído (não precisa de Maven instalado):\n\n```\n./mvnw.cmd compile exec:java\n```",
+            "./mvnw.cmd",
+            format!("mvn package\njava -jar target/{}.jar", artifact),
+        ),
+    };
     format!(
         r#"# {name}
 
@@ -1886,23 +1963,12 @@ Aplicativo gerado pelo **JavaForge** (interface Swing + banco SQLite).
 
 ## Como executar
 
-Com Maven instalado:
-
-```
-mvn compile exec:java
-```
-
-Ou com o Maven Wrapper incluído (não precisa de Maven instalado):
-
-```
-./mvnw.cmd compile exec:java
-```
+{build_instructions}
 
 Para gerar o JAR executável:
 
 ```
-mvn package
-java -jar target/{artifact}.jar
+{package_cmd}
 ```
 
 ## Estrutura
@@ -1922,8 +1988,9 @@ Ao salvar alterações no modelo visual dentro do JavaForge, o código é regene
 arquivos gerados que foram alterados por fora recebem uma cópia de segurança (`.bak`).
 "#,
         name = model.name,
-        artifact = artifact,
-        db = model.database.file
+        db = model.database.file,
+        build_instructions = build_instructions,
+        package_cmd = package_cmd
     )
 }
 
@@ -1942,4 +2009,69 @@ pub fn class_map(model: &AppModel) -> std::collections::BTreeMap<String, String>
         map.insert(w.id.clone(), name);
     }
     map
+}
+
+// ------------------------------------------------------------ Gradle generation --
+
+fn gen_build_gradle(model: &AppModel) -> String {
+    format!(
+        r#"plugins {{
+    id 'java'
+    id 'application'
+}}
+
+group = '{group}'
+version = '1.0.0'
+
+java {{
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}}
+
+repositories {{
+    mavenCentral()
+}}
+
+dependencies {{
+    implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
+}}
+
+application {{
+    mainClass = '{main}'
+}}
+
+tasks.withType(JavaCompile) {{
+    options.encoding = 'UTF-8'
+}}
+
+jar {{
+    manifest {{
+        attributes 'Main-Class': '{main}'
+    }}
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}}
+"#,
+        group = model.package_name,
+        main = format!("{}.Main", model.package_name)
+    )
+}
+
+fn gen_settings_gradle(model: &AppModel) -> String {
+    let artifact = sanitize_folder_name(&model.name)
+        .to_lowercase()
+        .replace(' ', "-");
+    let artifact = if artifact.is_empty() { "app".to_string() } else { artifact };
+    format!(
+        r#"rootProject.name = '{artifact}'
+"#
+    )
+}
+
+fn gen_gradle_properties(_model: &AppModel) -> String {
+    format!(
+        r#"org.gradle.jvmargs=-Xmx512m
+org.gradle.parallel=true
+org.gradle.configureondemand=true
+"#
+    )
 }

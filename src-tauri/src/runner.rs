@@ -1,3 +1,4 @@
+use crate::model::BuildTool;
 use crate::util::{build_dir, ensure_driver_jar};
 use serde::Serialize;
 use std::fs;
@@ -26,6 +27,75 @@ struct RunLine {
 }
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn which_gradle() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("JAVAFORGE_GRADLE") {
+        let p = PathBuf::from(explicit);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    // Common Gradle installations on Windows
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let p = PathBuf::from(local).join("JavaForge").join("gradle").join("bin").join("gradle.cmd");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let path = std::env::var("PATH").ok()?;
+    for dir in path.split(';') {
+        if dir.is_empty() {
+            continue;
+        }
+        for name in ["gradle.cmd", "gradle.bat", "gradle"] {
+            let p = PathBuf::from(dir).join(name);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Procura um Gradle já instalado no computador (sem baixar nada).
+fn find_local_gradle() -> Option<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        roots.push(PathBuf::from(local).join("JavaForge").join("gradle"));
+    }
+    for env in ["PROGRAMFILES", "PROGRAMFILES(X86)", "USERPROFILE"] {
+        if let Ok(dir) = std::env::var(env) {
+            let dir = PathBuf::from(dir);
+            roots.push(dir.join("gradle"));
+            if env == "USERPROFILE" {
+                roots.push(dir.join("tools").join("gradle"));
+            }
+        }
+    }
+    for root in roots {
+        if !root.is_dir() {
+            continue;
+        }
+        // versão única direta (ex.: C:\tools\gradle\bin\gradle.cmd)
+        let direto = root.join("bin").join("gradle.cmd");
+        if direto.exists() {
+            return Some(direto);
+        }
+        // com subpastas por versão
+        if let Ok(read) = fs::read_dir(&root) {
+            let mut candidatos: Vec<PathBuf> = read
+                .flatten()
+                .map(|e| e.path().join("bin").join("gradle.cmd"))
+                .filter(|p| p.exists())
+                .collect();
+            candidatos.sort();
+            if let Some(last) = candidatos.pop() {
+                return Some(last);
+            }
+        }
+    }
+    None
+}
 
 fn which_mvn() -> Option<PathBuf> {
     if let Ok(explicit) = std::env::var("JAVAFORGE_MVN") {
@@ -107,6 +177,20 @@ fn read_model_pkg(project: &PathBuf) -> Option<String> {
     v.get("packageName")
         .and_then(|p| p.as_str())
         .map(|s| s.to_string())
+}
+
+fn read_build_tool(project: &PathBuf) -> BuildTool {
+    let content = fs::read_to_string(project.join("app.model.json")).ok();
+    let v: Option<serde_json::Value> = content.and_then(|c| serde_json::from_str(&c).ok());
+    v.as_ref()
+        .and_then(|val| val.get("buildTool").and_then(|p| p.as_str()))
+        .and_then(|s| match s {
+            "maven" => Some(BuildTool::Maven),
+            "gradle" => Some(BuildTool::Gradle),
+            "none" => Some(BuildTool::None),
+            _ => None,
+        })
+        .unwrap_or(BuildTool::Maven)
 }
 
 fn collect_java(dir: &PathBuf, out: &mut Vec<PathBuf>) {
@@ -278,6 +362,46 @@ pub fn run_start(
         return Err("Pasta do projeto não encontrada.".to_string());
     }
 
+    let build_tool = read_build_tool(&project);
+
+    match build_tool {
+        BuildTool::Gradle => {
+            // Gradle: try system gradle, then local gradle, then wrapper
+            if let Some(gradle) = which_gradle() {
+                emit(&app, "sys", "> compilando e executando com Gradle");
+                let mut cmd = Command::new(gradle);
+                cmd.args(["-q", "run"])
+                    .current_dir(&project);
+                return spawn_and_track(&app, &slot, cmd, "Gradle");
+            }
+            if let Some(gradle) = find_local_gradle() {
+                emit(&app, "sys", "> compilando e executando com Gradle local");
+                let mut cmd = Command::new(gradle);
+                cmd.args(["-q", "run"])
+                    .current_dir(&project);
+                return spawn_and_track(&app, &slot, cmd, "Gradle local");
+            }
+            let gradlew = project.join("gradlew.cmd");
+            if gradlew.exists() {
+                emit(&app, "sys", "> executando via Gradle Wrapper");
+                let mut cmd = Command::new(&gradlew);
+                cmd.args(["-q", "run"])
+                    .current_dir(&project);
+                return spawn_and_track(&app, &slot, cmd, "Gradle Wrapper");
+            }
+            emit(&app, "sys", "> Gradle não encontrado; tentando Maven como fallback");
+            // Fall through to Maven logic
+        }
+        BuildTool::Maven => {
+            // Maven: existing logic
+        }
+        BuildTool::None => {
+            emit(&app, "sys", "> Build tool desabilitado; compilando com javac");
+            return run_javac(&app, &slot, &project);
+        }
+    }
+
+    // Maven logic (for Maven projects or Gradle fallback)
     if let Some(mvn) = which_mvn() {
         emit(&app, "sys", "> compilando e executando com Maven");
         let mut cmd = Command::new(mvn);

@@ -293,6 +293,20 @@ pub struct QueryColumn {
     pub header: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BuildTool {
+    Maven,
+    Gradle,
+    None,
+}
+
+impl Default for BuildTool {
+    fn default() -> Self {
+        BuildTool::Maven
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppModel {
@@ -303,6 +317,8 @@ pub struct AppModel {
     pub windows: Vec<WindowSpec>,
     pub database: DatabaseSpec,
     pub connections: Vec<ConnectionSpec>,
+    #[serde(default)]
+    pub build_tool: BuildTool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
