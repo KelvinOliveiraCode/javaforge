@@ -103,7 +103,7 @@ export default function DatabasePanel() {
                         <td>
                           {[c.pk ? "PK" : null, c.autoIncrement ? "auto" : null, c.notNull ? "not null" : null]
                             .filter(Boolean)
-                            .join(" · ") || "—"}
+                            .join(" · ") || "nenhum"}
                         </td>
                       </tr>
                     ))}

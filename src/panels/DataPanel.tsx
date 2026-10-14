@@ -30,7 +30,7 @@ export default function DataPanel() {
         As tabelas aqui viram o banco SQLite do aplicativo. As conexões usam essas colunas para
         gravar e consultar. O arquivo <strong>{model.database.file}</strong> fica na pasta{" "}
         <strong>data/</strong> do projeto. Em <strong>Relaciona com</strong> você liga uma coluna a
-        outra tabela (chave estrangeira) — o modelo "Lista de tarefas" usa isso.
+        outra tabela (chave estrangeira); o modelo "Lista de tarefas" usa isso.
       </p>
 
       <div className="field">

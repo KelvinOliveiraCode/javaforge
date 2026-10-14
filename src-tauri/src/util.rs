@@ -1,5 +1,4 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 pub const SQLITE_JAR_BYTES: &[u8] = include_bytes!("../../vendor/sqlite-jdbc.jar");
@@ -40,9 +39,9 @@ pub fn ensure_driver_jar(project: &Path) -> std::io::Result<PathBuf> {
 }
 
 pub fn hash_str(value: &str) -> String {
-    let mut h = DefaultHasher::new();
-    value.hash(&mut h);
-    format!("{:016x}", h.finish())
+    let mut hasher = Sha256::new();
+    hasher.update(value.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 /// Nome de pasta seguro para projetos.

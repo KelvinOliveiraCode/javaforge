@@ -9,4 +9,15 @@ export default defineConfig(async () => ({
     strictPort: true,
     watch: { ignored: ["**/src-tauri/**"] },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'codemirror': ['codemirror', '@codemirror/lang-java', '@codemirror/state', '@codemirror/view', '@uiw/react-codemirror', '@uiw/codemirror-themes'],
+          'tauri': ['@tauri-apps/api', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-opener'],
+        },
+      },
+    },
+  },
 }));

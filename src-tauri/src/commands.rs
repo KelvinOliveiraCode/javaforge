@@ -92,6 +92,18 @@ pub fn project_delete(path: String) -> Result<(), String> {
         );
     }
     let canon = fs::canonicalize(&dir).map_err(|e| e.to_string())?;
+
+    // Validate that the path is within allowed roots (user home or project directories)
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("C:\\"));
+    let home_canon = fs::canonicalize(&home).unwrap_or(home);
+
+    if !canon.starts_with(&home_canon) {
+        return Err("Operação não permitida: o projeto deve estar dentro do diretório do usuário.".to_string());
+    }
+
     if canon.parent().is_none() {
         return Err("Não é permitido apagar uma unidade inteira.".to_string());
     }
@@ -265,9 +277,21 @@ pub fn codegen_generate(project_dir: String) -> Result<CodegenResult, String> {
     let project = PathBuf::from(&project_dir);
     let model = read_model(&project)?;
     let problems = validate_model(model.clone());
+    
+    // Fail fast on validation errors
+    let errors: Vec<String> = problems
+        .iter()
+        .filter(|p| p.severity == "error")
+        .map(|p| p.message.clone())
+        .collect();
+    if !errors.is_empty() {
+        return Err(format!("Validação falhou:\n{}", errors.join("\n")));
+    }
+    
     let mut warnings: Vec<String> = problems
         .iter()
-        .map(|p| format!("[{}] {}", p.severity, p.message))
+        .filter(|p| p.severity == "warning")
+        .map(|p| p.message.clone())
         .collect();
     let files = codegen::generate(&model)?;
     write_generated(&project, &files, &mut warnings);
@@ -1017,6 +1041,16 @@ pub fn ddl_statements(model: &AppModel) -> Vec<String> {
             "CREATE TABLE IF NOT EXISTS \"{}\" ({})",
             t.name, cols
         ));
+        // Add indexes for foreign key columns
+        for c in &t.columns {
+            if !c.refs_table.trim().is_empty() {
+                let index_name = format!("idx_{}_{}", t.name, c.name);
+                ddl.push(format!(
+                    r#"CREATE INDEX IF NOT EXISTS "{}" ON "{}" ("{}")"#,
+                    index_name, t.name, c.name
+                ));
+            }
+        }
     }
     ddl
 }
@@ -1332,17 +1366,20 @@ pub fn resolve_javac() -> Option<PathBuf> {
         }
     }
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
-        let p = PathBuf::from(java_home).join("bin").join("javac.exe");
+        let exe = if cfg!(windows) { "javac.exe" } else { "javac" };
+        let p = PathBuf::from(java_home).join("bin").join(exe);
         if p.exists() {
             return Some(p);
         }
     }
     let path = std::env::var("PATH").ok()?;
-    for dir in path.split(';') {
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let exe = if cfg!(windows) { "javac.exe" } else { "javac" };
+    for dir in path.split(sep) {
         if dir.is_empty() {
             continue;
         }
-        let p = PathBuf::from(dir).join("javac.exe");
+        let p = PathBuf::from(dir).join(exe);
         if p.exists() {
             return Some(p);
         }

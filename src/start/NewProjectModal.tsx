@@ -177,7 +177,7 @@ export default function NewProjectModal({ kind, onKindChange, onClose }: Props) 
       {confirmando ? (
         <ConfirmDialog
           title="Substituir a pasta existente?"
-          message={`A pasta "${sugestaoDePasta}" em ${parentDir} já existe. Substituir apaga TODO o conteúdo antigo — código Java, banco e modelos — sem possibilidade de recuperação. O projeto novo começa do zero.`}
+          message={`A pasta "${sugestaoDePasta}" em ${parentDir} já existe. Substituir apaga TODO o conteúdo antigo: código Java, banco e modelos, sem possibilidade de recuperação. O projeto novo começa do zero.`}
           confirmLabel="Apagar e substituir"
           danger
           onCancel={() => setConfirmando(false)}

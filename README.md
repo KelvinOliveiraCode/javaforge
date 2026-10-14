@@ -8,7 +8,10 @@ em qualquer editor.
 ## O que ele faz
 
 - **Tela inicial**: criar em branco, criar a partir de um modelo ou abrir um projeto existente
-  (com lista de recentes).
+  (com lista de recentes). Dá para **excluir um projeto** (a lixeira em cada recente, ou
+  "Excluir projeto" no painel de arquivos) — a pasta inteira e o código gerado saem do disco,
+  sempre com confirmação. Ao criar, é possível **substituir uma pasta que já existe**, com aviso
+  explícito de que os arquivos antigos serão perdidos.
 - **Modelos prontos**: "Login + painel principal" (consulta a tabela de usuários no SQLite e
   abre o painel), "Cadastro (CRUD)" (pesquisar, salvar, atualizar e excluir com dados de exemplo),
   "Lista de tarefas" (adicionar, renomear, excluir e listar; usa chave estrangeira entre as

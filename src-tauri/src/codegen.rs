@@ -356,6 +356,16 @@ fn gen_schema(model: &AppModel) -> String {
             r#"CREATE TABLE IF NOT EXISTS "{}" ({})"#,
             table.name, cols
         ));
+        // Add indexes for foreign key columns
+        for col in &table.columns {
+            if !col.refs_table.trim().is_empty() {
+                let index_name = format!("idx_{}_{}", table.name, col.name);
+                ddl.push(format!(
+                    r#"CREATE INDEX IF NOT EXISTS "{}" ON "{}" ("{}")"#,
+                    index_name, table.name, col.name
+                ));
+            }
+        }
         if !table.seed_rows.is_empty() {
             let key_col = table
                 .columns
@@ -683,25 +693,33 @@ fn plan_database(model: &AppModel, warnings: &mut Vec<String>) -> Vec<DbMethod> 
                     format!("preencher{}", pascal_case(&conn.target_table_component_id))
                 };
                 let name = unique(&mut used, base);
-                let columns: Vec<String> = if conn.query_columns.is_empty() {
-                    table.columns.iter().map(|c| c.name.clone()).collect()
+                
+                // Validate query_columns against table.columns allowlist
+                let mut valid_columns: Vec<String> = Vec::new();
+                let mut valid_headers: Vec<String> = Vec::new();
+                if conn.query_columns.is_empty() {
+                    // Use all table columns
+                    valid_columns = table.columns.iter().map(|c| c.name.clone()).collect();
+                    valid_headers = table.columns.iter().map(|c| pascal_case(&c.name)).collect();
                 } else {
-                    conn.query_columns.iter().map(|q| q.column.clone()).collect()
-                };
-                let headers: Vec<String> = if conn.query_columns.is_empty() {
-                    table.columns.iter().map(|c| pascal_case(&c.name)).collect()
-                } else {
-                    conn.query_columns
-                        .iter()
-                        .map(|q| {
-                            if q.header.trim().is_empty() {
-                                pascal_case(&q.column)
+                    for qc in &conn.query_columns {
+                        if table.columns.iter().any(|c| c.name == qc.column) {
+                            valid_columns.push(qc.column.clone());
+                            if qc.header.trim().is_empty() {
+                                valid_headers.push(pascal_case(&qc.column));
                             } else {
-                                q.header.clone()
+                                valid_headers.push(qc.header.clone());
                             }
-                        })
-                        .collect()
-                };
+                        } else {
+                            warnings.push(format!(
+                                "Coluna de consulta \"{}\" não existe na tabela \"{}\"; ignorada.",
+                                qc.column, table.name
+                            ));
+                        }
+                    }
+                }
+                let columns = valid_columns;
+                let headers = valid_headers;
                 if columns.is_empty() {
                     continue;
                 }
