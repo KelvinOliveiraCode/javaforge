@@ -65,6 +65,7 @@ export function initialModel(): AppModel {
     database: { file: "data/app.db", tables: [] },
     connections: [],
     buildTool: "maven",
+    theme: "dark",
   };
 }
 

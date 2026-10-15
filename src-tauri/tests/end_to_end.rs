@@ -6,7 +6,7 @@ use javaforge_lib::codegen;
 use javaforge_lib::commands::{db_apply, db_sql};
 use javaforge_lib::model::*;
 use javaforge_lib::templates;
-use javaforge_lib::util::{is_valid_java_ident, java_class_name, SQLITE_JAR_BYTES};
+use javaforge_lib::util::{is_valid_java_ident, java_class_name, FLATLAF_JAR_BYTES, SQLITE_JAR_BYTES};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -33,6 +33,12 @@ fn write_project(dir: &PathBuf, model: &AppModel) {
     fs::write(
         dir.join("build").join("lib").join("sqlite-jdbc.jar"),
         SQLITE_JAR_BYTES,
+    )
+    .unwrap();
+    // O app gerado usa FlatLaf; sem o jar no classpath o javac nao acha a classe.
+    fs::write(
+        dir.join("build").join("lib").join("flatlaf.jar"),
+        FLATLAF_JAR_BYTES,
     )
     .unwrap();
     let json = serde_json::to_string_pretty(model).unwrap();
@@ -77,15 +83,24 @@ fn mvn_compile(dir: &PathBuf, label: &str) {
 fn compile(dir: &PathBuf, label: &str) {
     let out = dir.join("out");
     let mut java_files = Vec::new();
-    collect(&dir.join("src"), &mut java_files);
+    // So src/main/java: e o que o Maven/Gradle compilam. Varrer src inteiro
+    // tentaria compilar src/test sem JUnit no classpath.
+    collect(&dir.join("src").join("main").join("java"), &mut java_files);
     assert!(!java_files.is_empty(), "{}: nenhum arquivo java gerado", label);
+    let lib = dir.join("build").join("lib");
+    let cp = format!(
+        "{}{}{}",
+        lib.join("sqlite-jdbc.jar").to_string_lossy(),
+        if cfg!(windows) { ";" } else { ":" },
+        lib.join("flatlaf.jar").to_string_lossy()
+    );
     let result = Command::new(javac())
         .arg("-encoding")
         .arg("UTF-8")
         .arg("-d")
         .arg(&out)
         .arg("-cp")
-        .arg(dir.join("build").join("lib").join("sqlite-jdbc.jar"))
+        .arg(cp)
         .args(&java_files)
         .output()
         .expect("falha ao executar javac");
@@ -123,6 +138,7 @@ fn base_model(name: &str) -> AppModel {
         },
         connections: Vec::new(),
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 

@@ -183,6 +183,7 @@ fn blank_template(name: &str, package_name: &str) -> AppModel {
         },
         connections: vec![],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 
@@ -240,7 +241,9 @@ fn login_template(name: &str, package_name: &str) -> AppModel {
     entrar.table = "usuarios".to_string();
     entrar.params = vec![
         param("usuario", "txtUsuario", ParamRole::Where, QueryOperator::Eq),
-        param("senha", "pwdSenha", ParamRole::Where, QueryOperator::Eq),
+        // Aponta para a coluna de hash, nao para uma "senha" em texto puro: e o codegen
+        // que transforma isso em verificacao via HashUtil.
+        param("senha_hash", "pwdSenha", ParamRole::Where, QueryOperator::Eq),
     ];
     entrar.auth_success_window_id = principal.id.clone();
     entrar.close_current = true;
@@ -281,18 +284,25 @@ fn login_template(name: &str, package_name: &str) -> AppModel {
                 vec![
                     col("id", SqlType::Integer, true, false, true),
                     col("usuario", SqlType::Text, false, true, false),
-                    col("senha", SqlType::Text, false, true, false),
+                    col("senha_hash", SqlType::Text, false, true, false),
+                    col("salt", SqlType::Text, false, true, false),
                     col("nome", SqlType::Text, false, false, false),
                 ],
+                // usuario "admin" com senha "1234". O par salt+hash abaixo e
+                // PBKDF2-HMAC-SHA256 (120.000 iteracoes, 256 bits) calculado
+                // de proposito para essa senha: e o unico jeito de semear um
+                // usuario que ja entra. Troque a senha no primeiro acesso.
                 vec![vec![
                     ("usuario", "admin"),
-                    ("senha", "1234"),
+                    ("senha_hash", "ErQH48L3QOq5J0oE4TEJzMgNmJsJ8eA8513tWPklg5w="),
+                    ("salt", "amF2YWZvcmdlLXNlZWQwMQ=="),
                     ("nome", "Administrador"),
                 ]],
             )],
         },
         connections: vec![entrar, cancelar, sair],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 
@@ -407,6 +417,7 @@ fn crud_template(name: &str, package_name: &str) -> AppModel {
         },
         connections: vec![buscar, novo, salvar, excluir],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 
@@ -556,6 +567,7 @@ fn tarefas_template(name: &str, package_name: &str) -> AppModel {
         },
         connections: vec![adicionar, listar, excluir, renomear],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 
@@ -632,6 +644,7 @@ fn calculadora_template(name: &str, package_name: &str) -> AppModel {
         },
         connections: vec![calcular],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 
@@ -738,6 +751,7 @@ fn contatos_template(name: &str, package_name: &str) -> AppModel {
         },
         connections: vec![pesquisar, salvar, excluir],
         build_tool: BuildTool::Maven,
+        theme: "dark".to_string(),
     }
 }
 

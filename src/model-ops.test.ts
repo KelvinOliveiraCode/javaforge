@@ -47,6 +47,7 @@ function baseModel(): AppModel {
       { id: 'conn1', name: 'Conexão 1', componentId: 'btnAcao', event: 'actionPerformed', kind: 'message', table: '', params: [], queryColumns: [], targetTableComponentId: '', openWindowId: '', closeCurrent: false, message: 'Olá', messageTitle: 'Aviso', messageKind: 'info', authSuccessWindowId: '', customCode: '' },
     ],
     buildTool: 'maven',
+    theme: 'dark',
   };
 }
 

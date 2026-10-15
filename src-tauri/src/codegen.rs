@@ -87,6 +87,14 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
         &format!("src/main/java/{}/db/Database.java", pkg_path),
         gen_database(model, &plan),
     ));
+    // HashUtil so em projetos com login: em projeto sem auth seria codigo
+    // morto que o usuario nunca vai abrir.
+    if model.connections.iter().any(|c| c.kind == ConnectionKind::Authenticate) {
+        files.push(GeneratedFile::text(
+            &format!("src/main/java/{}/db/HashUtil.java", pkg_path),
+            gen_hash_util(&model.package_name),
+        ));
+    }
 
     for (idx, win) in model.windows.iter().enumerate() {
         files.push(GeneratedFile::text(
@@ -253,24 +261,13 @@ fn valid_params<'a>(
 }
 
 /// Nomes de variável únicos (colunas repetidas recebem sufixo 2, 3...).
-fn unique_vars<'a>(
-    params: &'a [(&'a ColumnSpec, &'a ComponentSpec, &'a ParamSpec)],
-) -> Vec<(String, &'a ColumnSpec, &'a ComponentSpec)> {
-    let mut used: Vec<String> = Vec::new();
+/** Nome da variavel Java do parametro que carrega a senha (coluna de hash ou "senha"). */
+fn var_de_senha(params: &[(String, &ColumnSpec, &ComponentSpec)]) -> String {
     params
         .iter()
-        .map(|(col, comp, _)| {
-            let base = camel_case(&col.name);
-            let mut name = base.clone();
-            let mut n = 2;
-            while used.contains(&name) {
-                name = format!("{}{}", base, n);
-                n += 1;
-            }
-            used.push(name.clone());
-            (name, *col, *comp)
-        })
-        .collect()
+        .find(|(_, col, _)| col.name == "senha_hash" || col.name == "senha")
+        .map(|(v, _, _)| v.clone())
+        .unwrap_or_else(|| "senha".to_string())
 }
 
 /// Nomes únicos para uma atualização: a mesma coluna pode aparecer nos campos a
@@ -304,6 +301,25 @@ fn unique_update_vars<'a>(
     (svars, wvars)
 }
 
+fn unique_vars<'a>(
+    params: &'a [(&'a ColumnSpec, &'a ComponentSpec, &'a ParamSpec)],
+) -> Vec<(String, &'a ColumnSpec, &'a ComponentSpec)> {
+    let mut used: Vec<String> = Vec::new();
+    params
+        .iter()
+        .map(|(col, comp, _)| {
+            let base = camel_case(&col.name);
+            let mut name = base.clone();
+            let mut n = 2;
+            while used.contains(&name) {
+                name = format!("{}{}", base, n);
+                n += 1;
+            }
+            used.push(name.clone());
+            (name, *col, *comp)
+        })
+        .collect()
+}
 fn setter_call(col: &ColumnSpec, idx: usize, expr: &str, like: bool) -> String {
     let value = match (col.col_type.clone(), like) {
         (SqlType::Text, true) | (SqlType::Blob, true) => {
@@ -345,10 +361,20 @@ fn gen_main(model: &AppModel, main_class: &str, class_names: &[String]) -> Strin
     for cls in class_names {
         imports.push_str(&format!("\nimport {}.ui.{};", pkg, cls));
     }
+    // FlatLaf deixa o app com cara de aplicativo moderno em vez do Metal.
+    // O fallback para o L&F do sistema é obrigatório: no caminho javac puro
+    // o jar pode não estar no classpath, e uma exceção aqui impediria a
+    // janela de abrir.
+    let laf_class = if model.theme == "light" {
+        "com.formdev.flatlaf.FlatLightLaf"
+    } else {
+        "com.formdev.flatlaf.FlatDarkLaf"
+    };
     format!(
         r#"package {pkg};
 
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 {imports}
 
 public final class Main {{
@@ -356,7 +382,17 @@ public final class Main {{
     private Main() {{
     }}
 
+    /** Aplica o FlatLaf; sem o jar no classpath, segue com o tema do sistema. */
+    private static void applyLookAndFeel() {{
+        try {{
+            UIManager.setLookAndFeel(new {laf}());
+        }} catch (Exception ex) {{
+            System.err.println("FlatLaf indisponivel, usando o tema do sistema: " + ex.getMessage());
+        }}
+    }}
+
     public static void main(String[] args) {{
+        applyLookAndFeel();
         SwingUtilities.invokeLater(() -> {{
             try {{
                 Database.ensureSchema();
@@ -371,7 +407,8 @@ public final class Main {{
 "#,
         pkg = pkg,
         cls = main_class,
-        imports = imports
+        imports = imports,
+        laf = laf_class
     )
 }
 
@@ -550,25 +587,99 @@ fn plan_database(model: &AppModel, warnings: &mut Vec<String>) -> Vec<DbMethod> 
                     ));
                     continue;
                 }
-                let vars = unique_vars(&w);
-                let binds = vars
+                let mut vars = unique_vars(&w);
+                // No login com hash, o parametro da senha entra como "senha" e
+                // nao como "senhaHash": ele carrega a senha DIGITADA, que e
+                // verificada em Java. O nome precisa dizer isso, porque esse
+                // codigo e lido por quem esta aprendendo.
+                if let Some(i) = vars
                     .iter()
-                    .enumerate()
-                    .map(|(i, (v, col, _))| {
-                        setter_call(col, i + 1, v, w[i].2.operator == QueryOperator::Like)
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n            ");
+                    .position(|(_, col, _)| col.name == "senha_hash" || col.name == "senha")
+                {
+                    vars[i].0 = "senha".to_string();
+                }
                 let name = unique(&mut used, format!("validarLoginEm{}", pascal_case(&table.name)));
-                let sql = java_quotes(&format!(
-                    r#"SELECT 1 FROM "{}" WHERE {} LIMIT 1"#,
-                    table.name,
-                    where_clause(&w)
-                ));
-                Some((
-                    name.clone(),
-                    format!(
-                        r#"    public static boolean {name}({args}) throws SQLException {{
+                let args = vars
+                    .iter()
+                    .map(|(v, _, _)| format!("String {}", v))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                // Login com hash: a senha NAO pode ir para o SQL, senao volta a
+                // ser comparada em texto puro. A busca filtra so pelo usuario e
+                // a senha e conferida em Java com HashUtil.
+                let nomes: Vec<String> = table.columns.iter().map(|c| c.name.clone()).collect();
+                let tem_hash = nomes.iter().any(|c| c == "senha_hash") && nomes.iter().any(|c| c == "salt");
+                if tem_hash {
+                    // O parametro da senha aponta para a coluna de hash (ou para
+                    // "senha"): ele vira verificacao, nao filtro do SQL.
+                    let senha_var = var_de_senha(&vars);
+                    let filtros: Vec<&(String, &ColumnSpec, &ComponentSpec)> = vars
+                        .iter()
+                        .filter(|(_, col, _)| col.name != "senha_hash" && col.name != "senha")
+                        .collect();
+                    if filtros.is_empty() {
+                        warnings.push(format!(
+                            "Conexao {} (login com hash) precisa de um campo de usuario.",
+                            conn.name
+                        ));
+                        continue;
+                    }
+                    let binds = filtros
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (v, col, _))| setter_call(col, i + 1, v, false))
+                        .collect::<Vec<_>>()
+                        .join("\n            ");
+                    let where_sql = filtros
+                        .iter()
+                        .map(|(_, col, _)| format!(r#""{}" = ?"#, col.name))
+                        .collect::<Vec<_>>()
+                        .join(" AND ");
+                    let sql = java_quotes(&format!(
+                        r#"SELECT "salt", "senha_hash" FROM "{}" WHERE {} LIMIT 1"#,
+                        table.name, where_sql
+                    ));
+                    Some((
+                        name.clone(),
+                        format!(
+                            r#"    public static boolean {name}({args}) throws SQLException {{
+        String sql = "{sql}";
+        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {{
+            {binds}
+            try (ResultSet rs = ps.executeQuery()) {{
+                if (!rs.next()) {{
+                    return false;
+                }}
+                return HashUtil.verificar({senha}, rs.getString("salt"), rs.getString("senha_hash"));
+            }}
+        }}
+    }}"#,
+                            name = name,
+                            args = args,
+                            sql = sql,
+                            binds = binds,
+                            senha = senha_var
+                        ),
+                    ))
+                } else {
+                    let binds = vars
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (v, col, _))| {
+                            setter_call(col, i + 1, v, w[i].2.operator == QueryOperator::Like)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n            ");
+                    let sql = java_quotes(&format!(
+                        r#"SELECT 1 FROM "{}" WHERE {} LIMIT 1"#,
+                        table.name,
+                        where_clause(&w)
+                    ));
+                    Some((
+                        name.clone(),
+                        format!(
+                            r#"    public static boolean {name}({args}) throws SQLException {{
         String sql = "{sql}";
         try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {{
             {binds}
@@ -577,17 +688,13 @@ fn plan_database(model: &AppModel, warnings: &mut Vec<String>) -> Vec<DbMethod> 
             }}
         }}
     }}"#,
-                        name = name,
-                        args = vars
-                            .iter()
-                            .map(|(v, _, _)| format!("String {}", v))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        sql = sql,
-                        binds = binds
-                    ),
-                ))
-            }
+                            name = name,
+                            args = args,
+                            sql = sql,
+                            binds = binds
+                        ),
+                    ))
+                }            }
             ConnectionKind::Insert => {
                 let Some(table) = table_of(model, &conn.table) else { continue };
                 let s = valid_params(model, window, &conn.table, &conn.params, ParamRole::Set, warnings);
@@ -916,6 +1023,78 @@ fn unique(used: &mut Vec<String>, base: String) -> String {
     name
 }
 
+/**
+ * Classe de seguranca gerada para projetos com login.
+ *
+ * Senha em texto puro no banco e o padrao que o template de login tinha, e
+ * ele ensina exatamente o que nao fazer. Esta classe faz PBKDF2 so com o
+ * JDK (javax.crypto), sem dependencia nova, e o template passa a usa-la.
+ */
+fn gen_hash_util(pkg: &str) -> String {
+    format!(
+        r#"package {pkg}.db;
+
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
+import java.util.Base64;
+
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+
+/**
+ * Hash de senha com PBKDF2-HMAC-SHA256, usando apenas o JDK.
+ *
+ * Uso tipico:
+ * <pre>
+ *   String salt = HashUtil.novoSalt();
+ *   String hash = HashUtil.hash(senha, salt);   // guarde os dois
+ *   boolean ok  = HashUtil.verificar(senha, salt, hash);
+ * </pre>
+ *
+ * Nunca guarde a senha digitada: guarde salt + hash.
+ */
+public final class HashUtil {{
+
+    private static final String ALGORITMO = "PBKDF2WithHmacSHA256";
+    private static final int ITERACOES = 120_000;
+    private static final int TAMANHO_BITS = 256;
+    private static final SecureRandom ALEATORIO = new SecureRandom();
+
+    private HashUtil() {{
+    }}
+
+    /** Salt aleatorio, em Base64. Gere um por usuario. */
+    public static String novoSalt() {{
+        byte[] salt = new byte[16];
+        ALEATORIO.nextBytes(salt);
+        return Base64.getEncoder().encodeToString(salt);
+    }}
+
+    /** Deriva o hash da senha com o salt informado. */
+    public static String hash(String senha, String saltBase64) {{
+        try {{
+            byte[] salt = Base64.getDecoder().decode(saltBase64);
+            PBEKeySpec spec = new PBEKeySpec(senha.toCharArray(), salt, ITERACOES, TAMANHO_BITS);
+            SecretKeyFactory fabrica = SecretKeyFactory.getInstance(ALGORITMO);
+            return Base64.getEncoder().encodeToString(fabrica.generateSecret(spec).getEncoded());
+        }} catch (NoSuchAlgorithmException | InvalidKeySpecException ex) {{
+            throw new IllegalStateException("Falha ao gerar o hash da senha", ex);
+        }}
+    }}
+
+    /** Confere a senha digitada contra o salt e o hash guardados. */
+    public static boolean verificar(String senha, String saltBase64, String hashGuardado) {{
+        if (senha == null || saltBase64 == null || hashGuardado == null) {{
+            return false;
+        }}
+        return hash(senha, saltBase64).equals(hashGuardado);
+    }}
+}}
+"#,
+        pkg = pkg
+    )
+}
 fn gen_database(model: &AppModel, plan: &[DbMethod]) -> String {
     let methods_code = if plan.is_empty() {
         "    // Nenhuma conexão com banco definida ainda. Crie conexões na aba Conexões.".to_string()
@@ -1902,6 +2081,11 @@ fn gen_pom(model: &AppModel) -> String {
       <artifactId>sqlite-jdbc</artifactId>
       <version>3.50.3.0</version>
     </dependency>
+    <dependency>
+      <groupId>com.formdev</groupId>
+      <artifactId>flatlaf</artifactId>
+      <version>3.7.1</version>
+    </dependency>
   </dependencies>
 
   <build>
@@ -2034,6 +2218,7 @@ repositories {{
 
 dependencies {{
     implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
+    implementation 'com.formdev:flatlaf:3.7.1'
 }}
 
 application {{

@@ -319,6 +319,13 @@ pub struct AppModel {
     pub connections: Vec<ConnectionSpec>,
     #[serde(default)]
     pub build_tool: BuildTool,
+    /// Tema do FlatLaf: "dark" (padrão) ou "light".
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

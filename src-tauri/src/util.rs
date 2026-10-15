@@ -2,6 +2,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 pub const SQLITE_JAR_BYTES: &[u8] = include_bytes!("../../vendor/sqlite-jdbc.jar");
+pub const FLATLAF_JAR_BYTES: &[u8] = include_bytes!("../../vendor/flatlaf-3.7.1.jar");
 pub const MVNW_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw");
 pub const MVNW_CMD_BYTES: &[u8] = include_bytes!("../../vendor/mvnw/mvnw.cmd");
 pub const MVNW_PROPS_BYTES: &[u8] =
@@ -41,6 +42,19 @@ pub fn ensure_driver_jar(project: &Path) -> std::io::Result<PathBuf> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&jar, SQLITE_JAR_BYTES)?;
+    Ok(jar)
+}
+
+/// Garante o FlatLaf na pasta de trabalho, copiando o embutido se faltar.
+pub fn ensure_flatlaf_jar(project: &Path) -> std::io::Result<PathBuf> {
+    let jar = build_dir(project).join("lib").join("flatlaf-3.7.1.jar");
+    if jar.exists() {
+        return Ok(jar);
+    }
+    if let Some(parent) = jar.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&jar, FLATLAF_JAR_BYTES)?;
     Ok(jar)
 }
 

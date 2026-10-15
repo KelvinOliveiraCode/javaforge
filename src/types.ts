@@ -131,6 +131,8 @@ export interface AppModel {
   database: DatabaseSpec;
   connections: ConnectionSpec[];
   buildTool: BuildTool;
+  /** Tema do FlatLaf do app gerado: "dark" (padrão) ou "light". */
+  theme: string;
 }
 
 export interface ProjectEntry {

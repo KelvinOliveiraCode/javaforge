@@ -1,17 +1,54 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { java } from "@codemirror/lang-java";
+import { autocompletion, CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { vscodeDark } from "../theme-vscode";
 import { setTabContent } from "../actions";
 import { useStore } from "../store";
+import { getModelCompletions, getJavaKeywords, type CompletionItem } from "./completions";
 
 export default function CodeEditor() {
   const openTabs = useStore((s) => s.openTabs);
   const centerTab = useStore((s) => s.centerTab);
+  const model = useStore((s) => s.model);
   const path = centerTab.startsWith("file:") ? centerTab.slice(5) : "";
   const tab = openTabs.find((t) => t.path === path) ?? null;
 
-  const extensions = useMemo(() => [java()], []);
+  const modelCompletionsRef = useRef<CompletionItem[]>([]);
+  const keywordsRef = useRef<CompletionItem[]>([]);
+
+  // Update completions when model changes
+  useEffect(() => {
+    modelCompletionsRef.current = getModelCompletions(model);
+    keywordsRef.current = getJavaKeywords();
+  }, [model]);
+
+  const completionSource = useMemo(() => {
+    return (context: CompletionContext): CompletionResult | null => {
+      const word = context.matchBefore(/\w*$/);
+      if (!word || (word.from === word.to && !context.explicit)) {
+        return null;
+      }
+
+      const allItems = [...modelCompletionsRef.current, ...keywordsRef.current];
+
+      const options: Completion[] = allItems.map((item) => ({
+        label: item.label,
+        type: item.type,
+        detail: item.detail,
+        boost: item.boost,
+        apply: item.label,
+      }));
+
+      return {
+        from: word.from,
+        options,
+        validFor: /^\w*$/,
+      };
+    };
+  }, []);
+
+  const extensions = useMemo(() => [java(), autocompletion({ override: [completionSource] })], [completionSource]);
 
   if (!tab) {
     return (
@@ -55,7 +92,7 @@ export default function CodeEditor() {
             bracketMatching: true,
             closeBrackets: true,
             indentOnInput: true,
-            autocompletion: false,
+            autocompletion: true,
           }}
         />
       </div>

@@ -1,5 +1,5 @@
 use crate::model::BuildTool;
-use crate::util::{build_dir, ensure_driver_jar};
+use crate::util::{build_dir, ensure_driver_jar, ensure_flatlaf_jar};
 use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -299,6 +299,9 @@ fn run_javac(
         return Err("Nenhum arquivo Java em src/. Gere o código primeiro.".to_string());
     }
     let jar = ensure_driver_jar(project).map_err(|e| e.to_string())?;
+    // FlatLaf tambem entra no classpath: sem ele o app compilaria, mas o
+    // UIManager nao encontraria a classe e ficaria no tema do sistema.
+    let _ = ensure_flatlaf_jar(project).map_err(|e| e.to_string())?;
     let javac = crate::commands::resolve_javac()
         .ok_or_else(|| "javac não encontrado. Instale o JDK 17+ ou o Maven.".to_string())?;
 
@@ -335,7 +338,9 @@ fn run_javac(
         .arg(format!(
             "{};{}",
             out_dir.to_string_lossy(),
-            jar.to_string_lossy()
+            ensure_flatlaf_jar(project)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
         ))
         .arg("-Dfile.encoding=UTF-8")
         .arg(format!("{}.Main", pkg))

@@ -1,10 +1,19 @@
+import { useMemo, useState } from "react";
 import { CATALOG, COMPONENT_GROUPS } from "../catalog";
+import { filterCatalog } from "./catalogFilter";
 import { addComponentAt } from "../actions";
 import { store, useStore } from "../store";
 import type { ComponentType } from "../types";
 
 export default function PalettePanel() {
   const designerWindowId = useStore((s) => s.designerWindowId);
+  const [busca, setBusca] = useState("");
+
+  const visiveis = useMemo(() => filterCatalog(busca), [busca]);
+  const gruposVisiveis = COMPONENT_GROUPS.map((g) => ({
+    grupo: g,
+    itens: visiveis.filter((c) => c.group === g),
+  })).filter((g) => g.itens.length > 0);
 
   const onDragStart = (e: React.DragEvent, type: ComponentType) => {
     e.dataTransfer.setData("application/x-javaconponent", type);
@@ -24,10 +33,26 @@ export default function PalettePanel() {
         Arraste um componente para a tela ou clique para adicionar. Cada item gera o código Swing
         correspondente.
       </p>
-      {COMPONENT_GROUPS.map((group) => (
-        <div className="palette-group" key={group}>
-          <div className="palette-group-title">{group}</div>
-          {CATALOG.filter((c) => c.group === group).map((c) => (
+      <div style={{ padding: "10px 10px 4px" }}>
+        <input
+          type="search"
+          className="input"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar componente..."
+          aria-label="Buscar componente na paleta"
+        />
+      </div>
+      {gruposVisiveis.length === 0 && (
+        <p className="panel-hint" style={{ padding: "10px" }}>
+          Nenhum componente encontrado para <strong>{busca}</strong>. Tente outro termo, como
+          "botao", "tabela" ou "jpanel".
+        </p>
+      )}
+      {gruposVisiveis.map(({ grupo, itens }) => (
+        <div className="palette-group" key={grupo}>
+          <div className="palette-group-title">{grupo}</div>
+          {itens.map((c) => (
             <button
               key={c.type}
               className="palette-item"
@@ -37,7 +62,9 @@ export default function PalettePanel() {
                 const p = clickPos();
                 addComponentAt(c.type, p.x, p.y);
               }}
-              title={c.description}
+              // Enter e Espaco ja nativos de <button>: quem so usa teclado
+              // nao fica de fora da paleta.
+              title={`${c.description} (Enter adiciona)`}
             >
               <span className="swatch" aria-hidden>
                 <Glyph type={c.type} />

@@ -17,6 +17,8 @@ function createTestModel(overrides: Partial<AppModel> = {}): AppModel {
     database: { file: 'data/app.db', tables: [] },
     connections: [],
     buildTool: 'maven',
+    theme: 'dark',
+    ...overrides,
     ...overrides,
   };
 }
