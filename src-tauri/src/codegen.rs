@@ -373,11 +373,6 @@ fn gen_main(model: &AppModel, main_class: &str, class_names: &[String]) -> Strin
     // O fallback para o L&F do sistema é obrigatório: no caminho javac puro
     // o jar pode não estar no classpath, e uma exceção aqui impediria a
     // janela de abrir.
-    let laf_class = if model.theme == "light" {
-        "com.formdev.flatlaf.FlatLightLaf"
-    } else {
-        "com.formdev.flatlaf.FlatDarkLaf"
-    };
     format!(
         r#"package {pkg};
 
@@ -387,14 +382,32 @@ import javax.swing.UIManager;
 
 public final class Main {{
 
+    /** Tema escolhido no JavaForge: "dark" ou "light". */
+    private static final String TEMA = "{tema}";
+
     private Main() {{
     }}
 
-    /** Aplica o FlatLaf; sem o jar no classpath, segue com o tema do sistema. */
+    /** Nome da classe do FlatLaf, conforme o tema escolhido no JavaForge. */
+    private static final String TEMA_LAF =
+        "light".equals(TEMA) ? "com.formdev.flatlaf.FlatLightLaf"
+                             : "com.formdev.flatlaf.FlatDarkLaf";
+
+    /**
+     * Aplica o FlatLaf. Se o jar nao estiver no classpath, segue com o tema do
+     * sistema em vez de impedir o app de abrir.
+     *
+     * A carga e por reflexao (Class.forName) de proposito: com a classe
+     * referenciada direto no codigo, a ausencia do jar lanca
+     * NoClassDefFoundError no momento em que a JVM vincula esta classe, e o
+     * app morre na abertura. Assim o nome e apenas uma string, e a falha vira
+     * ClassNotFoundException — capturavel, e o app degrada com elegância.
+     */
     private static void applyLookAndFeel() {{
         try {{
-            UIManager.setLookAndFeel(new {laf}());
-        }} catch (Exception ex) {{
+            Object instancia = Class.forName(TEMA_LAF).getDeclaredConstructor().newInstance();
+            UIManager.setLookAndFeel((javax.swing.LookAndFeel) instancia);
+        }} catch (Throwable ex) {{
             System.err.println("FlatLaf indisponivel, usando o tema do sistema: " + ex.getMessage());
         }}
     }}
@@ -416,7 +429,7 @@ public final class Main {{
         pkg = pkg,
         cls = main_class,
         imports = imports,
-        laf = laf_class
+        tema = model.theme
     )
 }
 
