@@ -122,9 +122,17 @@ cargo test --test end_to_end
 ```
 
 Gera os modelos (branco, login, CRUD, tarefas, contatos e calculadora) e um modelo sintético com
-todos os componentes e todos os tipos de conexão, compila tudo com `javac` **e com Maven**, cria o
-banco via um SchemaTool Java, confere os identificadores, a estrutura gerada, as chaves
-estrangeiras e o console SQL. São 10 testes.
+todos os componentes e todos os tipos de conexão, compila tudo com `javac`, **com Maven e com
+Gradle**, cria o banco via um SchemaTool Java, confere os identificadores, a estrutura gerada, as
+chaves estrangeiras e o console SQL.
+
+Além disso, um teste roda `gradle test` de verdade num projeto gerado: o JavaForge passa a gerar
+um `SchemaTest` (JUnit 5) que confere, contra um SQLite em arquivo temporário, que as tabelas e
+colunas do modelo existem no banco. O teste usa o mesmo SQLite do app — não um banco emulado —
+porque detalhes como `AUTOINCREMENT` mudam entre dialectos.
+
+São 15 testes. O caminho Maven é pulado com aviso quando o `mvn` não está instalado.
+
 
 Há também um teste de fumaça da interface, que abre o app de verdade e confere que ele sobe,
 fica vivo e desenha a tela:

@@ -96,6 +96,14 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
         ));
     }
 
+    // Teste de schema: so quando ha tabelas. Sem banco nao ha o que conferir,
+    // e um teste vazio seria ruido no projeto gerado.
+    if !model.database.tables.is_empty() {
+        files.push(GeneratedFile::text(
+            &format!("src/test/java/{}/db/SchemaTest.java", pkg_path),
+            gen_schema_test(model),
+        ));
+    }
     for (idx, win) in model.windows.iter().enumerate() {
         files.push(GeneratedFile::text(
             &format!("src/main/java/{}/ui/{}.java", pkg_path, class_names[idx]),
@@ -1095,9 +1103,10 @@ public final class HashUtil {{
         pkg = pkg
     )
 }
+
 fn gen_database(model: &AppModel, plan: &[DbMethod]) -> String {
     let methods_code = if plan.is_empty() {
-        "    // Nenhuma conexão com banco definida ainda. Crie conexões na aba Conexões.".to_string()
+        "    // Nenhuma conex├úo com banco definida ainda. Crie conex├Áes na aba Conex├Áes.".to_string()
     } else {
         plan.iter()
             .map(|m| m.code.clone())
@@ -1180,6 +1189,129 @@ public final class Database {{
         imports = imports,
         db = model.database.file,
         methods = methods_code
+    )
+}
+
+/**
+ * Gera o teste de schema do projeto criado.
+ *
+ * Usa o mesmo SQLite do app, contra um arquivo temporario: emular outro
+ * banco (H2) quebraria em detalhes como o AUTOINCREMENT, que o SQLite
+ * aceita e os outros nao. Testar com o banco de verdade e a unica forma de
+ * o teste dizer algo util sobre o que o usuario vai rodar.
+ */
+fn gen_schema_test(model: &AppModel) -> String {
+    let pkg = &model.package_name;
+    let mut checks = String::new();
+    for table in &model.database.tables {
+        // Cada coluna vira um argumento separado: "esperarColuna("t","a","b")".
+        // Juntar as colunas numa unica string faria o teste comparar
+        // "a, b" contra "a" e falhar sempre.
+        let cols = table
+            .columns
+            .iter()
+            .map(|c| format!("\"{}\"", c.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        checks.push_str(&format!(
+            "        esperarColuna(\"{}\", {});\n",
+            table.name, cols
+        ));
+    }
+    format!(
+        r#"package {pkg}.db;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Confere que o banco criado pelo Schema tem as tabelas e colunas do modelo.
+ *
+ * Roda contra um SQLite em arquivo temporario: o app.db de producao nao e
+ * tocado. Se o schema mudar e este teste comecar a falhar, o modelo e o banco
+ * sairam de sintonia.
+ */
+class SchemaTest {{
+
+    private static Connection ligacao;
+    private static Path arquivo;
+
+    @BeforeAll
+    static void preparar() throws Exception {{
+        arquivo = Files.createTempFile("schema-teste", ".db");
+        Files.deleteIfExists(arquivo);
+        ligacao = DriverManager.getConnection("jdbc:sqlite:" + arquivo);
+        try (Statement st = ligacao.createStatement()) {{
+            for (String comando : Schema.DDL) {{
+                if (comando == null || comando.isBlank()) {{
+                    continue;
+                }}
+                st.execute(comando);
+            }}
+        }}
+    }}
+
+    @AfterAll
+    static void limpar() throws Exception {{
+        if (ligacao != null) {{
+            ligacao.close();
+        }}
+        if (arquivo != null) {{
+            Files.deleteIfExists(arquivo);
+        }}
+    }}
+
+    /** Nome das colunas de uma tabela, na ordem que o banco devolve. */
+    private List<String> colunasDe(String tabela) throws Exception {{
+        List<String> saida = new ArrayList<>();
+        try (Statement st = ligacao.createStatement();
+             ResultSet rs = st.executeQuery("SELECT * FROM \"" + tabela + "\" LIMIT 0")) {{
+            var meta = rs.getMetaData();
+            for (int i = 1; i <= meta.getColumnCount(); i++) {{
+                saida.add(meta.getColumnName(i).toLowerCase());
+            }}
+        }}
+        return saida;
+    }}
+
+    /** Confere que a tabela existe e tem exatamente as colunas esperadas. */
+    private void esperarColuna(String tabela, String... colunas) throws Exception {{
+        List<String> reais = colunasDe(tabela);
+        for (String c : colunas) {{
+            assertTrue(
+                reais.contains(c),
+                "tabela " + tabela + " deveria ter a coluna " + c + "; encontrei " + reais
+            );
+        }}
+        assertEquals(
+            colunas.length,
+            reais.size(),
+            "tabela " + tabela + " tem colunas a mais: " + reais
+        );
+    }}
+
+    @Test
+    @DisplayName("as colunas do modelo estao no banco")
+    void colunasDoModelo() throws Exception {{
+{checks}    }}
+}}
+"#,
+        pkg = pkg,
+        checks = checks
     )
 }
 
@@ -2219,6 +2351,8 @@ repositories {{
 dependencies {{
     implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
     implementation 'com.formdev:flatlaf:3.7.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }}
 
 application {{
@@ -2234,6 +2368,10 @@ jar {{
         attributes 'Main-Class': '{main}'
     }}
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}}
+
+test {{
+    useJUnitPlatform()
 }}
 "#,
         group = model.package_name,

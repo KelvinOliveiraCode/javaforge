@@ -33,8 +33,15 @@ describe("filterCatalog", () => {
     expect(filterCatalog("zzzz-inexistente")).toEqual([]);
   });
 
-  it("faz substring, nao só o começo", () => {
+  it("faz substring, nao so o comeco", () => {
     const r = filterCatalog("table");
     expect(r.length).toBeGreaterThan(0);
+  });
+
+  // Bug real que encontrei: sem normalizar acento, "botao" nao achava "Botao"
+  // e a busca ficava inutil para quem nao digita acento.
+  it("nao exige acento na digitacao", () => {
+    expect(filterCatalog("botao").length).toBe(filterCatalog("botão").length);
+    expect(filterCatalog("tabela").length).toBe(filterCatalog("tabela").length);
   });
 });

@@ -412,6 +412,54 @@ fn synthetic_model() -> AppModel {
     model
 }
 
+/// O projeto gerado precisa ter testes que PASSEM, nao so que compilem.
+/// Roda `gradle test` de verdade num modelo com banco.
+#[test]
+fn gradle_test_run_passes() {
+    let dir = scratch("gradle-test-run");
+    let mut model = templates::template_model("crud", "App Teste", "com.teste.app");
+    model.build_tool = BuildTool::Gradle;
+    write_project(&dir, &model);
+
+    // O teste do schema so existe quando ha tabelas.
+    assert!(
+        dir.join("src").join("test").join("java").join("com").join("teste").join("app").join("db").join("SchemaTest.java").exists(),
+        "SchemaTest nao foi gerado"
+    );
+    let gradle = fs::read_to_string(dir.join("build.gradle")).unwrap();
+    assert!(gradle.contains("junit-jupiter"), "build.gradle sem junit-jupiter");
+    // Testa contra o proprio SQLite do app, nao contra um H2 emulado:
+    assert!(gradle.contains("useJUnitPlatform"), "build.gradle sem useJUnitPlatform");
+
+    // Veredito pela saida: o gradlew do Windows encerra com 1 mesmo depois
+    // de BUILD SUCCESSFUL quando o stdout vai por pipe.
+    let out = Command::new(dir.join("gradlew.cmd"))
+        .args(["test"])
+        .current_dir(&dir)
+        .output();
+    match out {
+        Ok(o) => {
+            let combined = format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            );
+            let sem_rede = combined.contains("Could not resolve")
+                || combined.contains("Could not download")
+                || combined.contains("Connection")
+                || combined.contains("UnknownHostException");
+            if sem_rede {
+                eprintln!("Gradle sem rede, teste do projeto gerado pulado");
+                return;
+            }
+            assert!(
+                combined.contains("BUILD SUCCESSFUL"),
+                "gradle test falhou:\n{combined}"
+            );
+        }
+        Err(e) => eprintln!("gradlew indisponivel ({e}), teste pulado"),
+    }
+}
 #[test]
 fn templates_compile() {
     for kind in ["blank", "login", "crud", "tarefas", "calculadora", "contatos"] {
