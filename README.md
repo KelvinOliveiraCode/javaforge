@@ -1,5 +1,6 @@
-# JavaForge
+# JavaForge — Construtor Visual de Aplicativos Java (Swing)
 
+<<<<<<< HEAD
 [![Rust](https://img.shields.io/badge/language-Rust-orange?logo=rust)](https://www.rust-lang.org/)
 [![SQLite](https://img.shields.io/badge/database-SQLite-blue?logo=sqlite)](https://www.sqlite.org/)
 
@@ -36,18 +37,44 @@ O arquivo app.model.json na raiz de cada projeto é a fonte da verdade: telas, c
 ## Como rodar
 
 Requisitos: Node 18+, Rust (stable) e JDK 17+ com JAVA_HOME definido (o app usa javac/java para compilar e rodar os projetos gerados). Maven ou Gradle são opcionais: se estiverem no PATH, são usados; sem nenhum dos dois, a compilação usa javac com o driver SQLite embutido.
+=======
+![linguagem: Rust](https://img.shields.io/badge/linguagem-Rust-blue)  
+![status: concluido](https://img.shields.io/badge/status-concluido-green)  
+![licenca: MIT](https://img.shields.io/badge/licenca-MIT-blue)
 
-```
-npm install
-npm run tauri dev
-```
+### Descrição
+Construtor visual de aplicativos Java Swing com banco SQLite, desenvolvido em Tauri (Rust + React). Ideia de um "NetBeans simplificado": monta a interface arrastando componentes, liga os eventos ao banco sem escrever código e gera um projeto Maven completo.
 
+### O que faz
+Construtor visual de aplicativos Java Swing com banco SQLite, desenvolvido em Tauri (Rust + React). Ideia de um "NetBeans simplificado": monta a interface arrastando componentes, liga os eventos ao banco sem escrever código e gera um projeto Maven completo.
+
+### Tecnologias
+- Rust
+- Tauri
+- React
+- TypeScript
+- SQLite
+- Java
+- Maven
+>>>>>>> 8780a322d09a5d5c026ea9cf48ed3f603e896781
+
+### Como usar
+Não há comando padrão registrado para esta stack. Consulte os arquivos do repositório para os comandos de execução.
+
+<<<<<<< HEAD
 Para gerar instaladores:
+=======
+### Estrutura
+Consulte a árvore do repositório para a organização exata de pastas e arquivos.
 
-```
-npm run tauri build
-```
+### Testes
+Não há contagem de testes registrada nesta metadata. Adicione e execute testes apropriados à linguagem (pytest para Python, ./mvnw test para Java, npm test para JavaScript/TypeScript).
+>>>>>>> 8780a322d09a5d5c026ea9cf48ed3f603e896781
 
+### Licença
+MIT
+
+<<<<<<< HEAD
 Saída em src-tauri/target/release/bundle (NSIS e MSI). Também é possível rodar direto: src-tauri/target/release/javaforge.exe (ou JavaForge.exe na raiz do repositório).
 
 ## Estrutura do projeto
@@ -96,3 +123,45 @@ Não há arquivo LICENSE na raiz do repositório; a licença não está especifi
 ## Autor
 
 Kelvin.
+=======
+### Autor
+Kelvin Oliveira — github.com/KelvinOliveiraCode
+
+---
+
+# JavaForge — Visual Java Swing App Builder
+
+![language: Rust](https://img.shields.io/badge/language-Rust-blue)  
+![status: concluido](https://img.shields.io/badge/status-concluido-green)  
+![license: MIT](https://img.shields.io/badge/license-MIT-blue)
+
+### Description
+Visual Java Swing application builder with SQLite database, built with Tauri (Rust + React). A "simplified NetBeans": drag-and-drop UI, wire events to the database without writing code, and generate a complete Maven project.
+
+### What it does
+Visual Java Swing application builder with SQLite database, built with Tauri (Rust + React). A "simplified NetBeans": drag-and-drop UI, wire events to the database without writing code, and generate a complete Maven project.
+
+### Technologies
+- Rust
+- Tauri
+- React
+- TypeScript
+- SQLite
+- Java
+- Maven
+
+### How to use
+No standard command registered for this stack. Check the repository files for execution commands.
+
+### Structure
+Check the repository tree for the exact folder and file organization.
+
+### Tests
+No test count recorded in this metadata. Add and run tests appropriate for the language (pytest for Python, ./mvnw test for Java, npm test for JavaScript/TypeScript).
+
+### License
+MIT
+
+### Author
+Kelvin Oliveira — github.com/KelvinOliveiraCode
+>>>>>>> 8780a322d09a5d5c026ea9cf48ed3f603e896781
