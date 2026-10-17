@@ -1,165 +1,98 @@
 # JavaForge
 
-Construtor de aplicativos Java (Swing) com banco SQLite, feito em Tauri (Rust + React).
-A ideia é um "NetBeans simplificado": monte a interface arrastando componentes, ligue os
-eventos ao banco sem escrever código e gere um projeto Maven completo que você pode abrir
-em qualquer editor.
+[![Rust](https://img.shields.io/badge/language-Rust-orange?logo=rust)](https://www.rust-lang.org/)
+[![SQLite](https://img.shields.io/badge/database-SQLite-blue?logo=sqlite)](https://www.sqlite.org/)
 
-## O que ele faz
+Construtor visual de aplicativos Java Swing com banco SQLite, construído com Tauri (Rust + React). Monta telas arrastando componentes, liga eventos a ações no banco sem escrever código e gera um projeto Java completo (Maven ou Gradle) que compila e roda fora da ferramenta.
 
-- **Tela inicial**: criar em branco, criar a partir de um modelo ou abrir um projeto existente
-  (com lista de recentes). Dá para **excluir um projeto** (a lixeira em cada recente, ou
-  "Excluir projeto" no painel de arquivos) — a pasta inteira e o código gerado saem do disco,
-  sempre com confirmação. Ao criar, é possível **substituir uma pasta que já existe**, com aviso
-  explícito de que os arquivos antigos serão perdidos.
-- **Modelos prontos**: "Login + painel principal" (consulta a tabela de usuários no SQLite e
-  abre o painel), "Cadastro (CRUD)" (pesquisar, salvar, atualizar e excluir com dados de exemplo),
-  "Lista de tarefas" (adicionar, renomear, excluir e listar; usa chave estrangeira entre as
-  tabelas `tarefas` e `projetos`), "Agenda de contatos" (nome, telefone e e-mail) e
-  "Calculadora" (sem banco: o botão roda código Java escrito por você).
-- **Edição segura**: desfazer/refazer (Ctrl+Z, Ctrl+Y) em qualquer alteração do modelo, com
-  edições seguidas juntadas em um passo só. Importar/Exportar o modelo em `.json` para levar
-  um aplicativo de um computador a outro.
-- **Tema claro ou escuro**: o botão de sol/lua na barra de título guarda a escolha.
-- **Designer**: paleta com 22 componentes Swing (botão, rótulo, campo de texto, senha, área de
-  texto, caixa de seleção, rádio, combinação, lista, tabela, painel, rolagem, progresso, girar,
-  botão liga/desliga, separador, deslizador, barra de rolagem, painel de texto, editor de texto,
-  barra de ferramentas e árvore). Arrastar para mover, alça para redimensionar, grade de 10 px,
-  várias janelas por projeto e barra de menus por janela.
-- **Conexões (o "cola" no-code)**: ligue um evento (clique, Enter, perda de foco) a uma ação:
-  verificar login, inserir, atualizar, excluir, consultar e preencher tabela, abrir janela,
-  mostrar mensagem ou rodar código manual. Itens de menu também aceitam conexões.
-- **Dados**: editor de tabelas e colunas (chave primária, auto incremento, obrigatório) e de dados
-  iniciais. O banco `app.db` é criado na pasta do projeto com um clique.
-- **Aba Banco**: rode SQL à mão no banco do aplicativo (consultar, inserir, corrigir), veja a
-  estrutura (tabelas, colunas e relações) e aplique o modelo de novo ao banco. SQL que apaga ou
-  reescreve dados pede confirmação. Clicar no `app.db` da árvore de arquivos abre essa aba — o
-  banco é binário e não abre no editor.
-- **Código**: o projeto gerado é Maven completo (com Maven Wrapper) e pode ser editado no
-  editor do app (tema VS Code Dark+) ou em qualquer editor externo. Alterações feitas por fora
-  geram cópia de segurança antes de uma nova geração.
-- **Rodar**: compila e executa o app gerado (Maven se disponível, senão `javac` + driver SQLite
-  embutido). Atalho F5.
+## Problema / Por que existe
 
-## Como desenvolver
+Criar um aplicativo Java Swing com banco SQLite exige escrever à mão o esquema do banco, o acesso a dados com JDBC, as telas, o layout de cada janela e a ligação de eventos aos comandos do banco. Antes de ver algo funcionar, já é preciso escrever muito código repetitivo. O JavaForge existe para remover essa etapa: projete a interface visualmente, conecte eventos a ações do banco (inserir, consultar, atualizar, excluir, abrir janela, mostrar mensagem) e gere um projeto Java pronto para abrir em qualquer editor e compilar com Maven, Gradle ou javac puro.
+
+## O que faz
+
+- Tela inicial: criar projeto em branco, a partir de um modelo pronto ou abrir um projeto existente, com lista de recentes. Excluir projeto apaga a pasta inteira e o código gerado do disco, sempre com confirmação. Ao criar, é possível substituir uma pasta que já existe, com aviso explícito de que os arquivos antigos serão perdidos.
+- Modelos prontos: "Login + painel principal" (consulta a tabela de usuários no SQLite e abre o painel), "Cadastro (CRUD)" (pesquisar, salvar, atualizar e excluir com dados de exemplo), "Lista de tarefas" (adicionar, renomear, excluir e listar; chave estrangeira entre as tabelas tarefas e projetos), "Agenda de contatos" (nome, telefone e e-mail) e "Calculadora" (sem banco: executa código Java escrito por você).
+- Edição segura: desfazer/refazer (Ctrl+Z, Ctrl+Y) em qualquer alteração do modelo, com edições seguidas agrupadas em um passo só. Importar/exportar o modelo em .json para levar um aplicativo de um computador para outro.
+- Tema claro ou escuro, escolhido com o botão sol/lua na barra de título e lembrado entre sessões.
+- Designer: 22 componentes Swing (botão, rótulo, campo de texto, senha, área de texto, caixa de seleção, rádio, combinação, lista, tabela, painel, rolagem, progresso, girar, botão liga/desliga, separador, deslizador, barra de rolagem, painel de texto, editor de texto, barra de ferramentas e árvore). Arrastar para mover, alça para redimensionar, grade de 10 px, várias janelas por projeto e barra de menus por janela.
+- Conexões (o cola no-code): ligue um evento (clique, Enter, perda de foco) a uma ação: verificar login, inserir, atualizar, excluir, consultar e preencher tabela, abrir janela, mostrar mensagem ou rodar código manual. Itens de menu também aceitam conexões.
+- Dados: editor de tabelas e colunas (chave primária, auto incremento, obrigatório) e de dados iniciais. O banco app.db é criado na pasta do projeto com um clique.
+- Aba Banco: rode SQL à mão (consultar, inserir, corrigir), veja a estrutura (tabelas, colunas e relações) e reaplique o modelo ao banco. SQL que apaga ou reescreve dados pede confirmação. Clicar no app.db na árvore de arquivos abre essa aba; o banco é binário e não abre no editor de código.
+- Código: o projeto gerado é Maven completo (com Maven Wrapper) ou Gradle, editável no editor do app (tema VS Code Dark+) ou em qualquer editor externo. Alterações feitas por fora geram cópia de segurança antes de uma nova geração.
+- Rodar: compila e executa o app gerado (Maven se disponível; senão, javac com o driver SQLite embutido). Atalho F5. A ferramenta de build (Maven, Gradle ou nenhum) é salva no app.model.json.
+
+## Stack
+
+- Frontend: React 18, TypeScript, Vite, CodeMirror 6 com suporte a Java (@codemirror/lang-java, @uiw/react-codemirror) e tema VS Code Dark+, @tauri-apps/api
+- Backend: Rust (edição 2021), Tauri 2, tauri-plugin-dialog, tauri-plugin-opener, serde, serde_json, sha2
+- Código gerado: Java (JDK 17+), SQLite (driver jdbc embutido em vendor/sqlite-jdbc.jar), Maven Wrapper ou Gradle Wrapper opcionais; javac puro como fallback quando nenhum dos dois está instalado
+- Testes: vitest (frontend), cargo test (backend, end_to_end) e script de fumaça da interface (tools/fumaca-ui.ps1)
+
+## Como funciona
+
+O arquivo app.model.json na raiz de cada projeto é a fonte da verdade: telas, componentes, conexões, banco e ferramenta de build. Salvar o modelo regenera o código Java (Main.java, Database.java, Schema.java e uma classe por janela). Fluxo típico: criar ou abrir projeto, montar telas no designer, ligar eventos a ações no painel Conexões, definir tabelas e dados iniciais, gerar código, compilar e rodar com F5. O código gerado pode ser editado dentro do app ou em qualquer editor externo; o JavaForge não exige que você continue usando a ferramenta.
+
+## Como rodar
+
+Requisitos: Node 18+, Rust (stable) e JDK 17+ com JAVA_HOME definido (o app usa javac/java para compilar e rodar os projetos gerados). Maven ou Gradle são opcionais: se estiverem no PATH, são usados; sem nenhum dos dois, a compilação usa javac com o driver SQLite embutido.
 
 ```
 npm install
 npm run tauri dev
 ```
 
-Requisitos: Node 18+, Rust (stable), JDK 17+ com `JAVA_HOME` (o app usa javac/java para
-compilar e rodar os projetos gerados). **Maven ou Gradle são opcionais**: se estiverem no PATH
-eles são usados; sem nenhum dos dois, a compilação usa `javac` com o driver SQLite que vem
-embutido no app. A ferramenta de build é escolhida por projeto (Maven, Gradle ou nenhum) e
-salva no `app.model.json`.
-
-## Como gerar o instalador
+Para gerar instaladores:
 
 ```
 npm run tauri build
 ```
 
-Saída em `src-tauri/target/release/bundle/` (NSIS e MSI).
+Saída em src-tauri/target/release/bundle (NSIS e MSI). Também é possível rodar direto: src-tauri/target/release/javaforge.exe (ou JavaForge.exe na raiz do repositório).
 
-## Arquitetura
+## Estrutura do projeto
 
-```
-src-tauri/src/
-  model.rs        tipos do modelo (serde, espelho de src/types.ts)
-  codegen.rs      gera Main/Schema/Database/<Janela>.java, pom.xml / build.gradle + wrappers
-  templates.rs    modelos iniciais (branco, login, CRUD, tarefas, contatos, calculadora)
-  commands.rs     comandos Tauri: projetos, arquivos, modelo, validação, banco
-  runner.rs       compila e executa o projeto gerado (Maven/Gradle/javac) com saída ao vivo
-  registry.rs     registro de projetos recentes (JSON em %APPDATA%)
-  util.rs         identificadores Java, escapes, drivers SQLite/Maven/Gradle embutidos
-src/
-  start/          tela inicial e modal de criação
-  ide/            cascos da IDE (barra de título, status, atalhos)
-  designer/       canvas WYSIWYG com arrastar, redimensionar e seleção
-  panels/         arquivos, paleta, propriedades, conexões, dados, banco, saída
-  editor/         abas e editor de código (CodeMirror, tema VS Code Dark+)
-  theme-vscode.ts cores do VS Code Dark+ aplicadas ao CodeMirror
-  actions.ts      ações sobre o modelo (debounce de salvamento e geração)
-```
+Repositório:
 
-O `app.model.json` na raiz de cada projeto é a fonte da verdade: telas, componentes,
-conexões, banco e **ferramenta de build**. Salvar o modelo regera o código Java.
+- src/ — frontend React: start/ (tela inicial e criação de projetos), ide/ (bancada, barra de título, status, atalhos), designer/ (canvas WYSIWYG com arrastar, redimensionar e seleção), panels/ (arquivos, paleta, propriedades, conexões, dados, banco, saída, migração), editor/ (abas e editor CodeMirror), components/, actions.ts, store.ts, model-ops.ts, catalog.ts, types.ts, styles.css, theme-vscode.ts
+- src-tauri/ — backend Rust: src/lib.rs, model.rs, codegen.rs, templates.rs, commands.rs, runner.rs, registry.rs, util.rs; tests/end_to_end.rs; tauri.conf.json; build.rs
+- vendor/ — sqlite-jdbc.jar e mvnw (Maven Wrapper)
+- tools/ — scripts PowerShell (fumaca-ui, teste-completo e outros) e geradores de ícone
+- verify/ — capturas de tela e relatórios de verificação
+- dist/ — build do frontend; public/, index.html, vite.config.ts, tsconfig.json, package.json
 
-### Estrutura do projeto gerado
+Projeto gerado (exemplo MeuApp/):
 
-```
-MeuApp/
-├── pom.xml                      projeto Maven (se Maven selecionado)
-├── mvnw, mvnw.cmd, .mvn/        Maven Wrapper
-├── build.gradle                 projeto Gradle (se Gradle selecionado)
-├── settings.gradle              configuração do Gradle
-├── gradle.properties            propriedades do Gradle
-├── gradlew, gradlew.cmd         Gradle Wrapper
-├── gradle/wrapper/              arquivos do wrapper
-├── README.md, .gitignore
-├── app.model.json               modelo visual (fonte da verdade)
-├── src/main/java/<pacote>/
-│   ├── Main.java                ponto de entrada
-│   ├── db/Database.java         acesso ao SQLite e métodos das conexões
-│   ├── db/Schema.java           tabelas, colunas, chaves estrangeiras e dados iniciais
-│   └── ui/*Window.java          uma classe por janela
-├── data/app.db                  banco SQLite (criado no primeiro uso)
-└── build/                       pasta de trabalho do JavaForge
-    ├── lib/sqlite-jdbc.jar      driver usado quando não há Maven/Gradle
-    ├── tools/                   ferramentas auxiliares (SchemaTool, SqlTool, DDL, seed)
-    └── out/, out-sql/           classes compiladas dessas ferramentas
-```
+- pom.xml (Maven) ou build.gradle com gradlew, settings.gradle e gradle.properties (Gradle)
+- app.model.json — modelo visual, fonte da verdade
+- src/main/java/Main.java, Database.java, Schema.java e *Window.java (uma classe por janela)
+- data/app.db — banco SQLite, criado no primeiro uso
+- build/ — trabalho do JavaForge (lib/sqlite-jdbc.jar, tools/, out/)
+- README.md, .gitignore
 
-`build/`, `data/`, `target/` e `.gradle/` estão no `.gitignore` gerado. Projetos criados em
-versões anteriores usavam `.javaforge`, `lib/` e `app.db` na raiz: eles continuam
-abrindo e funcionando do mesmo jeito.
+build/, data/, target/ e .gradle/ estão no .gitignore gerado. Projetos de versões anteriores (.javaforge, lib/ e app.db na raiz) continuam abrindo e funcionando do mesmo jeito.
 
-## Testes
+## Trade-offs e decisões
 
-```
-cargo test --test end_to_end
-```
+- Estrutura achatada do projeto gerado: Main.java, Database.java, Schema.java e as janelas *Window.java ficam direto em src/main/java/, sem pacotes (sem com/exemplo/app, sem db/ ou ui/) e sem declaração de package. O objetivo é ser fácil de navegar e editar à mão em qualquer editor, com Maven, Gradle ou javac puro. A desvantagem é não atender quem precisa de pacotes Java organizados por camada.
+- Um único tema escuro de alto contraste para a ferramenta (fundo #0a0c10, superfícies até #1a2029, contraste do texto principal cerca de 16:1), acento âmbar #f5a524, sem gradientes, brilhos ou vidro. Tipografia de código em Cascadia/Consolas e interface em Segoe UI Variable, para o código não "mudar de casa" ao entrar no app. Raio pequeno (3 a 8 px) e bordas secas: ferramenta densa, não vitrine.
+- Prévia das telas no estilo Swing (cinza claro, baixo relevo) separa visualmente "seu app" do "estúdio"; grade de 10 px e alça de redimensionar mantêm o posicionamento previsível.
+- Layout de bancada simplificado (tipo NetBeans): arquivos e componentes à esquerda, tela no centro, propriedades/conexões/dados à direita, console embaixo; tudo visível de uma vez, sem menus escondidos.
+- Sem elemento decorativo sem função; todo botão tem ação; atalhos (F5 roda, Ctrl+S salva, Delete remove) e estados vazios explicam o próximo passo.
+- Arquivos gerados recebem aviso e cópia de segurança antes de serem sobrescritos.
 
-Gera os modelos (branco, login, CRUD, tarefas, contatos e calculadora) e um modelo sintético com
-todos os componentes e todos os tipos de conexão, compila tudo com `javac`, **com Maven e com
-Gradle**, cria o banco via um SchemaTool Java, confere os identificadores, a estrutura gerada, as
-chaves estrangeiras e o console SQL.
+## Limitações conhecidas
 
-Além disso, um teste roda `gradle test` de verdade num projeto gerado: o JavaForge passa a gerar
-um `SchemaTest` (JUnit 5) que confere, contra um SQLite em arquivo temporário, que as tabelas e
-colunas do modelo existem no banco. O teste usa o mesmo SQLite do app — não um banco emulado —
-porque detalhes como `AUTOINCREMENT` mudam entre dialectos.
+- Instaladores produzidos são NSIS e MSI (Windows); o executável é .exe. Não há declaração de suporte a macOS ou Linux neste repositório.
+- Sem Maven nem Gradle, a compilação usa javac com o driver SQLite embutido; recursos que dependem de build Maven/Gradle (por exemplo, testes JUnit gerados) não se aplicam nesse modo.
+- O banco app.db é binário: não abre no editor de código; clicar no arquivo na árvore abre a aba Banco. Não há desfazer de SQL executado na aba Banco — comandos destrutivos pedem confirmação antes de executar.
+- Projetos gerados usam estrutura sem pacotes, o que pode não ser adequado para convenções de organização por pacotes Java.
+- Modelos (.json) são transferidos de computador para computador à mão; não há sincronização em nuvem.
 
-São 15 testes. O caminho Maven é pulado com aviso quando o `mvn` não está instalado.
+## Licença
 
+Não há arquivo LICENSE na raiz do repositório; a licença não está especificada.
 
-Há também um teste de fumaça da interface, que abre o app de verdade e confere que ele sobe,
-fica vivo e desenha a tela:
+## Autor
 
-```
-powershell -File tools\fumaca-ui.ps1
-```
-
-Saída em `verify/fumaca/tela.png`.
-
-## Verificação ponta a ponta (já executada)
-
-- `cargo test`: 3/3 passando.
-- App gerado pelo modelo de login: compila com Maven, abre a janela Swing,
-  aceita `admin` / `1234` consultando o SQLite (diálogo "Bem-vindo!") e abre a
-  janela principal.
-- Interface do JavaForge verificada na prática: tela inicial, modal de criação,
-  bancada (designer, paleta, propriedades, conexões, dados, console) e editor
-  com o tema VS Code Dark+.
-- Script de repro: `tools/teste-completo.ps1` (roda tudo e escreve
-  `verify/relatorio.txt`).
-
-## Instaladores
-
-```
-src-tauri/target/release/bundle/nsis/JavaForge_1.0.0_x64-setup.exe
-src-tauri/target/release/bundle/msi/JavaForge_1.0.0_x64_en-US.msi
-```
-
-Ou rode direto: `src-tauri/target/release/javaforge.exe` (ou `JavaForge.exe` na raiz).
+Kelvin.
