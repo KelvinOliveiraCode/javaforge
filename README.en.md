@@ -1,108 +1,127 @@
 # javaforge
 
-[![JavaScript/TypeScript](https://img.shields.io/badge/JS-TS-yellow?logo=javascript)](https://www.typescriptlang.org/)   ![status: done](https://img.shields.io/badge/status-done-green)   ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
+<div align="center">
 
-## Summary
+**English** · [Português (Brasil)](README.md)
 
-JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
-## Problem / Why it exists
+</div>
 
-The project addresses a practical scope and automates a task that, done manually, is repetitive and error-prone. The focus is on turning data or processes into reliable output, with readable, testable, and extensible code.
-## Architecture
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/) [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/) [![MIT License](https://img.shields.io/badge/License-MIT-f4c430?style=flat-square)](LICENSE)
 
-Code files (40):
-- `actions.test.ts`
-- `actions.ts`
-- `api.ts`
-- `App.tsx`
-- `catalog.test.ts`
-- `catalog.ts`
-- `ConfirmDialog.tsx`
-- `ThemeToggle.tsx`
-- `Designer.tsx`
-- `CodeEditor.tsx`
-- `completions.ts`
-- `EditorTabs.tsx`
-- `ErrorBoundary.tsx`
-- `guide.ts`
-- `GuideModal.tsx`
-## Key Dependencies and Libraries
+### JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
 
-- vite
-- @vitejs/plugin-react
-- vitest/config
-## What it does
+---
+
+## What it is
 
 JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
-## How to run
 
-Requirements: Node.js and npm (or yarn/pnpm).
+---
+
+## Quick Start
 
 ```bash
-# install dependencies
+# Clone and enter
+git clone https://github.com/KelvinOliveiraCode/<repo>.git
+cd <repo>
+
+# Install dependencies
 npm install
 
-# run in development
+# Development server
 npm run dev
 
-# production build
+# Production build
 npm run build
 
-# run tests
+# Run tests
 npm test
 ```
-## Project Structure
 
-- `actions.test.ts`
-- `actions.ts`
-- `api.ts`
-- `App.tsx`
-- `catalog.test.ts`
-- `catalog.ts`
-- `ConfirmDialog.tsx`
-- `ThemeToggle.tsx`
-- `Designer.tsx`
-- `CodeEditor.tsx`
-- `completions.ts`
-- `EditorTabs.tsx`
-- `ErrorBoundary.tsx`
-- `guide.ts`
-- `GuideModal.tsx`
-- `IDE.tsx`
-- `StatusBar.tsx`
-- `TitleBar.tsx`
-- `main.tsx`
-- `model-ops.test.ts`
-- `model-ops.ts`
-- `catalogFilter.test.ts`
-- `catalogFilter.ts`
-- `ConnectionsPanel.tsx`
-- `DatabasePanel.tsx`
-## Trade-offs and Technical Decisions
+## How it works
 
-- Single-file component architecture (`App.tsx`): all UI, state, and logic live in one file for deploy simplicity and no complex build.
-- Global state via `useState` + `useMemo`: avoids unnecessary Context API for small scope; `useMemo` memoizes expensive aggregations (charts, insights).
-- Inline mock data: transactions, budgets, goals, and notifications are TypeScript constants ,  enables prototyping and visual tests without backend.
-- Tailwind CSS + custom gradients: inline design system via utility classes; no separate CSS, eases visual maintenance.
-- Rule-based financial AI (`getAIResponse`): deterministic keyword responses; no external LLM call, works offline at zero cost.
-- Planned `localStorage` persistence: state survives reload; no server, no database.
-## Known Limitations
+Single-file component architecture (`App.tsx`): all UI, state, and logic live in one file for deploy simplicity and zero-config build.
 
-- Fixed mock data; no integration with real banking APIs (Open Banking, Plaid, etc.).
-- Rule-based AI (`getAIResponse`); does not use real LLM or embeddings.
-- Persistence only in `localStorage` (planned); data lost when switching browser/device.
-- No authentication/authorization; single-user local application.
-- Charts via `recharts` with static data; no real-time data streaming.
-## Tests
+Key architectural decisions:
+- **Global state** via `useState` + `useMemo` (avoids Context API overhead)
+- **Memoized aggregations** for charts and insights
+- **Inline mock data** as TypeScript constants for zero-backend prototyping
+- **Rule-based AI** (`getAIResponse`) ,  deterministic, offline, zero-cost
 
-```bash
-npm test
-```
-No automated tests detected in scan.
+---
+
+## Capabilities
+
+| Capability | Description |
+|------------|-------------|
+| Dashboard | 6 metric cards (Balance, Income, Expense, Savings, Investments, Net Worth) |
+| Cash Flow | Bar chart (7d/30d) with Recharts ,  Income, Expense, Net per period |
+| Budget Tracking | Category budgets with progress bars, over/under alerts |
+| Goal Management | Progress rings with monthly savings calculation & deadline countdown |
+| AI Assistant | Rule-based chat (getAIResponse) ,  spending analysis, savings tips, projections |
+| Insights | Auto-generated alerts: delivery spikes, net worth growth, category breakdown |
+| Transactions | Add/edit income/expense with categories, tags, date picker |
+| Persistence | localStorage ,  state survives reload, zero backend |
+
+
+---
+
+
+
+---
+
+## FAQ
+
+<details>
+<summary><strong>What is this project?</strong></summary>
+
+A React/TypeScript study/project demonstrating core concepts.
+
+</details>
+
+<details>
+<summary><strong>How do I run it?</strong></summary>
+
+See [Quick Start](#quick-start) for copy-paste commands.
+
+</details>
+
+<details>
+<summary><strong>Are there tests?</strong></summary>
+
+No automated tests in this repository.
+
+</details>
+
+<details>
+<summary><strong>Can I use this in production?</strong></summary>
+
+This is a **study/portfolio project**. Review and harden (auth, persistence, monitoring, etc.) before production use.
+
+</details>
+
+
+
+---
+
+## Documentation
+
+- **Source Code** ,  Browse the `src/` directory for implementation details
+- **API Reference** ,  TypeScript types in source
+- **Architecture Diagram** ,  See [architecture.mermaid](docs/architecture.mermaid) (if present)
+- **Changelog** ,  [CHANGELOG.md](CHANGELOG.md) (if present)
+- **Contributing** ,  [CONTRIBUTING.md](CONTRIBUTING.md) (if present)
+
 ## License
 
-Distributed under the MIT License. See the `LICENSE` file in this repository.
-## Author
+[MIT](LICENSE) ,  Kelvin Oliveira
 
-Kelvin Oliveira ,  https://github.com/KelvinOliveiraCode
-Portfolio: https://kelvinoliveiracode.github.io/portfolio/
+---
+
+<div align="center">
+
+**Built with** · TypeScript + React + Vite + Tailwind
+
+**Author** · [Kelvin Oliveira](https://github.com/KelvinOliveiraCode) · [Portfolio](https://kelvinoliveiracode.github.io/portfolio/)
+
+</div>
