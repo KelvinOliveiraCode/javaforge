@@ -50,18 +50,18 @@ Decisões arquiteturais principais:
 
 ---
 
-## Capabilities
+## Capacidades
 
-| Capability | Description |
+| Capacidade | Descrição |
 |------------|-------------|
-| Dashboard | 6 metric cards (Balance, Income, Expense, Savings, Investments, Net Worth) |
-| Cash Flow | Bar chart (7d/30d) with Recharts ,  Income, Expense, Net per period |
-| Budget Tracking | Category budgets with progress bars, over/under alerts |
-| Goal Management | Progress rings with monthly savings calculation & deadline countdown |
-| AI Assistant | Rule-based chat (getAIResponse) ,  spending analysis, savings tips, projections |
-| Insights | Auto-generated alerts: delivery spikes, net worth growth, category breakdown |
-| Transactions | Add/edit income/expense with categories, tags, date picker |
-| Persistence | localStorage ,  state survives reload, zero backend |
+| Dashboard | 6 cards de métricas (Saldo, Receitas, Despesas, Economia, Investimentos, Patrimônio) |
+| Fluxo de Caixa | Gráfico de barras (7d/30d) com Recharts ,  Receitas, Despesas, Saldo por período |
+| Orçamentos | Orçamentos por categoria com barras de progresso, alertas de estouro |
+| Metas | Anéis de progresso com cálculo de economia mensal e contagem regressiva |
+| Assistente IA | Chat baseado em regras (getAIResponse) ,  análise de gastos, dicas, projeções |
+| Insights | Alertas automáticos: picos de delivery, crescimento patrimonial, breakdown por categoria |
+| Transações | Adicionar/editar receitas/despesas com categorias, tags, seletor de data |
+| Persistência | localStorage ,  estado sobrevive a reload, zero backend |
 
 
 ---
@@ -70,33 +70,33 @@ Decisões arquiteturais principais:
 
 ---
 
-## FAQ
+## Perguntas Frequentes
 
 <details>
-<summary><strong>What is this project?</strong></summary>
+<summary><strong>O que é este projeto?</strong></summary>
 
-A React/TypeScript study/project demonstrating core concepts.
+Um estudo/projeto em React/TypeScript demonstrando conceitos fundamentais.
 
 </details>
 
 <details>
-<summary><strong>How do I run it?</strong></summary>
+<summary><strong>Como executar?</strong></summary>
 
-See [Quick Start](#quick-start) for copy-paste commands.
-
-</details>
-
-<details>
-<summary><strong>Are there tests?</strong></summary>
-
-No automated tests in this repository.
+Veja [Início Rápido](#início-rápido) para comandos copiáveis.
 
 </details>
 
 <details>
-<summary><strong>Can I use this in production?</strong></summary>
+<summary><strong>Há testes?</strong></summary>
 
-This is a **study/portfolio project**. Review and harden (auth, persistence, monitoring, etc.) before production use.
+Nenhum teste automatizado neste repositório.
+
+</details>
+
+<details>
+<summary><strong>Posso usar em produção?</strong></summary>
+
+Este é um **projeto de estudo/portfólio**. Revise e endureça (auth, persistência, monitoramento, etc.) antes de usar em produção.
 
 </details>
 
@@ -104,15 +104,15 @@ This is a **study/portfolio project**. Review and harden (auth, persistence, mon
 
 ---
 
-## Documentation
+## Documentação
 
-- **Source Code** ,  Browse the `src/` directory for implementation details
-- **API Reference** ,  TypeScript types in source
-- **Architecture Diagram** ,  See [architecture.mermaid](docs/architecture.mermaid) (if present)
-- **Changelog** ,  [CHANGELOG.md](CHANGELOG.md) (if present)
-- **Contributing** ,  [CONTRIBUTING.md](CONTRIBUTING.md) (if present)
+- **Código-Fonte** ,  Navegue pelo diretório `src/` para detalhes de implementação
+- **Referência da API** ,  Tipos TypeScript no fonte
+- **Diagrama de Arquitetura** ,  Veja [architecture.mermaid](docs/architecture.mermaid) (se presente)
+- **Changelog** ,  [CHANGELOG.md](CHANGELOG.md) (se presente)
+- **Contribuindo** ,  [CONTRIBUTING.md](CONTRIBUTING.md) (se presente)
 
-## License
+## Licença
 
 [MIT](LICENSE) ,  Kelvin Oliveira
 
@@ -120,8 +120,8 @@ This is a **study/portfolio project**. Review and harden (auth, persistence, mon
 
 <div align="center">
 
-**Built with** · TypeScript + React + Vite + Tailwind
+**Construído com** · TypeScript + React + Vite + Tailwind
 
-**Author** · [Kelvin Oliveira](https://github.com/KelvinOliveiraCode) · [Portfolio](https://kelvinoliveiracode.github.io/portfolio/)
+**Autor** · [Kelvin Oliveira](https://github.com/KelvinOliveiraCode) · [Portfolio](https://kelvinoliveiracode.github.io/portfolio/)
 
 </div>

@@ -52,16 +52,16 @@ Decisões arquiteturais principais:
 
 ## Capabilities
 
-| Capability | Description |
+| Capacidade | Descrição |
 |------------|-------------|
-| Dashboard | 6 metric cards (Balance, Income, Expense, Savings, Investments, Net Worth) |
-| Cash Flow | Bar chart (7d/30d) with Recharts ,  Income, Expense, Net per period |
-| Budget Tracking | Category budgets with progress bars, over/under alerts |
-| Goal Management | Progress rings with monthly savings calculation & deadline countdown |
-| AI Assistant | Rule-based chat (getAIResponse) ,  spending analysis, savings tips, projections |
-| Insights | Auto-generated alerts: delivery spikes, net worth growth, category breakdown |
-| Transactions | Add/edit income/expense with categories, tags, date picker |
-| Persistence | localStorage ,  state survives reload, zero backend |
+| Dashboard | 6 cards de métricas (Saldo, Receitas, Despesas, Economia, Investimentos, Patrimônio) |
+| Fluxo de Caixa | Gráfico de barras (7d/30d) com Recharts ,  Receitas, Despesas, Saldo por período |
+| Orçamentos | Orçamentos por categoria com barras de progresso, alertas de estouro |
+| Metas | Anéis de progresso com cálculo de economia mensal e contagem regressiva |
+| Assistente IA | Chat baseado em regras (getAIResponse) ,  análise de gastos, dicas, projeções |
+| Insights | Alertas automáticos: picos de delivery, crescimento patrimonial, breakdown por categoria |
+| Transações | Adicionar/editar receitas/despesas com categorias, tags, seletor de data |
+| Persistência | localStorage ,  estado sobrevive a reload, zero backend |
 
 
 ---
