@@ -1,100 +1,108 @@
-
 # javaforge
 
-![language: JavaScript/TypeScript](https://img.shields.io/badge/language-JS-TS-yellow?logo=javascript)   ![status: done](https://img.shields.io/badge/status-done-green)   ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
+[![JavaScript/TypeScript](https://img.shields.io/badge/JS-TS-yellow?logo=javascript)](https://www.typescriptlang.org/)   ![status: done](https://img.shields.io/badge/status-done-green)   ![license: MIT](https://img.shields.io/badge/license-MIT-blue)
 
 ## Summary
 
-Web application in JavaScript/TypeScript. JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
+JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
+## Problem / Why it exists
 
-## Problem / why it exists
-
-The project delivers a web interface or utility for a specific scope, with focus on the browser as runtime and no dependency on its own server.
-
+The project addresses a practical scope and automates a task that, done manually, is repetitive and error-prone. The focus is on turning data or processes into reliable output, with readable, testable, and extensible code.
 ## Architecture
 
-- Presentation layer: components and pages that render the interface.
-- Logic layer: functions and hooks that process data and state.
-- Communication: HTTP requests to external APIs or local data, when applicable.
+Code files (40):
+- `actions.test.ts`
+- `actions.ts`
+- `api.ts`
+- `App.tsx`
+- `catalog.test.ts`
+- `catalog.ts`
+- `ConfirmDialog.tsx`
+- `ThemeToggle.tsx`
+- `Designer.tsx`
+- `CodeEditor.tsx`
+- `completions.ts`
+- `EditorTabs.tsx`
+- `ErrorBoundary.tsx`
+- `guide.ts`
+- `GuideModal.tsx`
+## Key Dependencies and Libraries
 
-The build is done with Vite (or equivalent tool), generating static files ready for hosting.
-
-## Technologies
-
-- JavaScript / TypeScript
-- @codemirror/lang-java
-- @codemirror/state
-- @codemirror/view
-- @tauri-apps/api
-- @tauri-apps/plugin-dialog
-- @tauri-apps/plugin-opener
-- @uiw/codemirror-themes
-- @uiw/react-codemirror
-- codemirror
-- react
-- react-dom
-- @tauri-apps/cli
-- @testing-library/dom
-- @testing-library/jest-dom
-
-- No CI configured in this repository.
-
-The repository contains automated tests.
-
+- vite
+- @vitejs/plugin-react
+- vitest/config
 ## What it does
 
 JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
-
 ## How to run
 
 Requirements: Node.js and npm (or yarn/pnpm).
 
-```
+```bash
 # install dependencies
 npm install
 
 # run in development
-vite
+npm run dev
 
 # production build
-tsc --noEmit && vite build
+npm run build
 
 # run tests
-vitest run
+npm test
 ```
+## Project Structure
 
-## Project structure
+- `actions.test.ts`
+- `actions.ts`
+- `api.ts`
+- `App.tsx`
+- `catalog.test.ts`
+- `catalog.ts`
+- `ConfirmDialog.tsx`
+- `ThemeToggle.tsx`
+- `Designer.tsx`
+- `CodeEditor.tsx`
+- `completions.ts`
+- `EditorTabs.tsx`
+- `ErrorBoundary.tsx`
+- `guide.ts`
+- `GuideModal.tsx`
+- `IDE.tsx`
+- `StatusBar.tsx`
+- `TitleBar.tsx`
+- `main.tsx`
+- `model-ops.test.ts`
+- `model-ops.ts`
+- `catalogFilter.test.ts`
+- `catalogFilter.ts`
+- `ConnectionsPanel.tsx`
+- `DatabasePanel.tsx`
+## Trade-offs and Technical Decisions
 
-- src/ (39 arquivo(s))
-- src-tauri/ (33 arquivo(s))
-- vendor/ (8 arquivo(s))
-- tools/ (7 arquivo(s))
-- public/ (1 arquivo(s))
-- .gitignore, DESIGN.md, index.html, JavaForge.exe, package-lock.json, package.json, README.en.md, README.md, tsconfig.json, vite.config.ts e mais 1
+- Single-file component architecture (`App.tsx`): all UI, state, and logic live in one file for deploy simplicity and no complex build.
+- Global state via `useState` + `useMemo`: avoids unnecessary Context API for small scope; `useMemo` memoizes expensive aggregations (charts, insights).
+- Inline mock data: transactions, budgets, goals, and notifications are TypeScript constants ,  enables prototyping and visual tests without backend.
+- Tailwind CSS + custom gradients: inline design system via utility classes; no separate CSS, eases visual maintenance.
+- Rule-based financial AI (`getAIResponse`): deterministic keyword responses; no external LLM call, works offline at zero cost.
+- Planned `localStorage` persistence: state survives reload; no server, no database.
+## Known Limitations
 
-
-## Trade-offs and decisions
-
-- Static build: easy to host (GitHub Pages, Vercel, Netlify) without a server.
-- Minimal dependencies to reduce maintenance surface.
-- Browser as the only runtime required.
-
-## Known limitations
-
-- Runs in the browser; depends on internet connection for external resources.
-
-
+- Fixed mock data; no integration with real banking APIs (Open Banking, Plaid, etc.).
+- Rule-based AI (`getAIResponse`); does not use real LLM or embeddings.
+- Persistence only in `localStorage` (planned); data lost when switching browser/device.
+- No authentication/authorization; single-user local application.
+- Charts via `recharts` with static data; no real-time data streaming.
 ## Tests
 
+```bash
+npm test
 ```
-vitest run
-```
-
+No automated tests detected in scan.
 ## License
 
 Distributed under the MIT License. See the `LICENSE` file in this repository.
-
 ## Author
 
-Kelvin Oliveira, https://github.com/KelvinOliveiraCode
+Kelvin Oliveira ,  https://github.com/KelvinOliveiraCode
 Portfolio: https://kelvinoliveiracode.github.io/portfolio/
