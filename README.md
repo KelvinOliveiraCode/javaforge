@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**English** · [Português (Brasil)](README.md)
+[English](README.en.md) · **Português (Brasil)**
 
 </div>
 
@@ -18,35 +18,35 @@ JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code 
 
 ---
 
-## Quick Start
+## Início Rápido
 
 ```bash
-# Clone and enter
+# Clone e entre
 git clone https://github.com/KelvinOliveiraCode/<repo>.git
 cd <repo>
 
-# Install dependencies
+# Instale dependências
 npm install
 
-# Development server
+# Servidor de desenvolvimento
 npm run dev
 
-# Production build
+# Build para produção
 npm run build
 
-# Run tests
+# Execute os testes
 npm test
 ```
 
 ## Como funciona
 
-Single-file component architecture (`App.tsx`): all UI, state, and logic live in one file for deploy simplicity and zero-config build.
+Arquitetura de componente em arquivo único (`App.tsx`): toda a UI, estado e lógica vivem em um arquivo para simplicidade de deploy e build zero-config.
 
-Key architectural decisions:
-- **Global state** via `useState` + `useMemo` (avoids Context API overhead)
-- **Memoized aggregations** for charts and insights
-- **Inline mock data** as TypeScript constants for zero-backend prototyping
-- **Rule-based AI** (`getAIResponse`) ,  deterministic, offline, zero-cost
+Decisões arquiteturais principais:
+- **Estado global** via `useState` + `useMemo` (evita overhead do Context API)
+- **Agregações memoizadas** para gráficos e insights
+- **Dados mock in-line** como constantes TypeScript para prototipagem sem backend
+- **IA baseada em regras** (`getAIResponse`) ,  determinística, offline, custo zero
 
 ---
 
