@@ -1,127 +1,125 @@
 # javaforge
 
-<div align="center">
-
 **English** · [Português (Brasil)](README.md)
 
-</div>
-
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/) [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/) [![MIT License](https://img.shields.io/badge/License-MIT-f4c430?style=flat-square)](LICENSE)
-
-### JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
-
----
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)](#) [![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](#) [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](#) [![Tauri](https://img.shields.io/badge/Tauri-2-desktop-24C8D8?style=flat-square&logo=tauri)](#) [![Vitest](https://img.shields.io/badge/Vitest-69%20tests-6BA81E?style=flat-square&logo=vitest)](#) [![MIT License](https://img.shields.io/badge/License-MIT-f4c430?style=flat-square)](LICENSE)
 
 ## What it is
 
-JavaForge: Visual Java Swing app builder with SQLite. Drag-and-drop UI, no-code event connections, generates complete Maven projects.
+**JavaForge** is a **visual development IDE/tool** for building Java **Swing** applications with an embedded **SQLite** database without writing everything by hand: the user drags components (JButton, JLabel, JTextField, JPanel…), connects events without code, and the app **generates a complete Maven project** (`pom.xml` + wrapper) that can be run and later edited in code. It is a desktop product (Tauri 2) that also runs as a web app in the browser.
 
----
+> Note: the previous README described a **finance dashboard** (with Recharts and a rule-based AI assistant) — it does not exist in this repository. Corrected.
 
-## Quick Start
+## Status
 
-```bash
-# Clone and enter
-git clone https://github.com/KelvinOliveiraCode/<repo>.git
-cd <repo>
+Actively in development, working. Tested (69 tests) and with a validated build.
 
-# Install dependencies
-npm install
+## Features
 
-# Development server
-npm run dev
+- **Swing component palette**: drag and position JButton, JLabel, JTextField, JPanel and others onto a 10-px-grid design bench.
+- **No-code event connections**: wire component actions to app logic without typing.
+- **Code editor** (CodeMirror, VS Code Dark+ theme) with Java code generation.
+- **Embedded SQLite**: a data panel that writes to the app's database.
+- **Maven project generation**: build options (`maven` → generates `pom.xml` + `mvnw`/`mvnw.cmd`; `none` → plain `javac` with the embedded SQLite driver).
+- **Run/stop the generated project**, save, open recent projects, regenerate.
+- **Single high-contrast dark theme** ("forge" identity, amber #f5a524); design decisions documented in `DESIGN.md`.
+- **Tauri 2 desktop app** (window, dialogs, open file) with a Vite web fallback.
 
-# Production build
-npm run build
+## Architecture
 
-# Run tests
-npm test
+A React/TypeScript app with an IDE panel layout (design bench, palette, properties, data, console). The app model lives in a store (`store.ts`), actions are centralized in `actions.ts`, the component catalog in `catalog.ts`, and code generation in `model-ops.ts`. The desktop wrapper is Tauri 2 (`src-tauri`).
+
+```mermaid
+flowchart LR
+    U[User] --> IDE[IDE - design panels]
+    IDE --> CAT[catalog.ts - Swing components]
+    IDE --> ST[store.ts - app model]
+    ACT[actions.ts] --> ST
+    ST --> GEN[model-ops.ts - generate Java/Maven]
+    GEN --> MAV[Maven project: pom.xml + SQLite]
+    IDE --desktop--> T[Tauri 2 shell]
+    COD[CodeEditor - CodeMirror] --> GEN
 ```
 
-## How it works
+## Stack
 
-Arquitetura de componente em arquivo único (`App.tsx`): toda a UI, estado e lógica vivem em um arquivo para simplicidade de deploy e build zero-config.
+- React 18.3, TypeScript 5.x
+- Vite 5, CodeMirror 6 + `@codemirror/lang-java`
+- Tauri 2 (`@tauri-apps/api`, `plugin-dialog`, `plugin-opener`)
+- Tests: Vitest 2 + Testing Library + jsdom
+- No Tailwind (custom IDE styling, see `DESIGN.md`)
 
-Decisões arquiteturais principais:
-- **Estado global** via `useState` + `useMemo` (evita overhead do Context API)
-- **Agregações memoizadas** para gráficos e insights
-- **Dados mock in-line** como constantes TypeScript para prototipagem sem backend
-- **IA baseada em regras** (`getAIResponse`) ,  determinística, offline, custo zero
+## Repository layout
 
----
+```
+javaforge/
+├── src/
+│   ├── App.tsx · main.tsx
+│   ├── actions.ts · store.ts · catalog.ts · model-ops.ts
+│   ├── designer/Designer.tsx      # design bench (drag & drop)
+│   ├── editor/CodeEditor.tsx      # CodeMirror Java editor
+│   ├── ide/IDE.tsx                # IDE shell (tabs, status, title)
+│   ├── panels/                    # Catalog, Data, Database, Migration…
+│   ├── start/StartScreen.tsx      # create/open project
+│   └── *.test.ts                  # tests (model, actions, catalog, store)
+├── src-tauri/                     # Tauri 2 desktop wrapper
+├── DESIGN.md                      # design direction (theme, type, layout)
+├── package.json · vite.config.ts
+└── LICENSE                        # MIT
+```
 
-## Capabilities
+## Prerequisites and installation
 
-| Capacidade | Descrição |
-|------------|-------------|
-| Dashboard | 6 cards de métricas (Saldo, Receitas, Despesas, Economia, Investimentos, Patrimônio) |
-| Fluxo de Caixa | Gráfico de barras (7d/30d) com Recharts ,  Receitas, Despesas, Saldo por período |
-| Orçamentos | Orçamentos por categoria com barras de progresso, alertas de estouro |
-| Metas | Anéis de progresso com cálculo de economia mensal e contagem regressiva |
-| Assistente IA | Chat baseado em regras (getAIResponse) ,  análise de gastos, dicas, projeções |
-| Insights | Alertas automáticos: picos de delivery, crescimento patrimonial, breakdown por categoria |
-| Transações | Adicionar/editar receitas/despesas com categorias, tags, seletor de data |
-| Persistência | localStorage ,  estado sobrevive a reload, zero backend |
+Node.js (npm). For the desktop build, also [Rust + Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
+```bash
+git clone https://github.com/KelvinOliveiraCode/javaforge.git
+cd javaforge
+npm install
+```
 
----
+## How to run
 
+```bash
+npm run dev        # web app in the browser (Vite)
+npm run build      # production build (tsc --noEmit && vite build), validated by the agent
+npm test           # vitest run
+npm run tauri dev  # desktop app (Tauri 2)
+npm run tauri build
+```
 
+## Tests and quality
 
----
+Real run (verified by the agent):
 
-## FAQ
+```bash
+npm test
+# 69 passed (5 files): catalogFilter 7, store 20, model-ops 29, actions 2, catalog 11
+npm run build
+# built in 3.15s
+```
 
-<details>
-<summary><strong>What is this project?</strong></summary>
+There is no CI configured in this repository.
 
-A React/TypeScript study/project demonstrating core concepts.
+## Technical decisions and trade-offs
 
-</details>
+- **Same code for web and desktop** (Tauri 2): one React frontend that also packages as a native app; the cost is the Tauri shell overhead.
+- **Dark tool design, no toggle**: for long sessions and coherence with the generated code (VS Code theme); decisions and reasons in `DESIGN.md`.
+- **UI elements that generate real code**: the bench is not just visual — the model becomes an executable Maven project.
+- **CodeMirror editor themed like VS Code**: generated code "does not change home" when entering the app.
 
-<details>
-<summary><strong>How do I run it?</strong></summary>
+## Known limitations and roadmap
 
-See [Quick Start](#quick-start) for copy-paste commands.
+- Generates Java Swing + SQLite apps; it does not cover all Swing components/frameworks.
+- Product in development; the web build is validated, but the full desktop flow depends on the Rust/Tauri toolchain.
+- No end-to-end UI tests — the current suite covers model, actions and catalog.
 
-</details>
+## Development process
 
-<details>
-<summary><strong>Are there tests?</strong></summary>
+An individual project by Kelvin Oliveira, built with orchestrated AI agents and reviewed by the author. The builder architecture, the Maven code generation and the review are the author's.
 
-No automated tests in this repository.
+## License and author
 
-</details>
+MIT — Copyright (c) 2026 Kelvin Rebelo de Oliveira.
 
-<details>
-<summary><strong>Can I use this in production?</strong></summary>
-
-This is a **study/portfolio project**. Review and harden (auth, persistence, monitoring, etc.) before production use.
-
-</details>
-
-
-
----
-
-## Documentation
-
-- **Source Code** ,  Browse the `src/` directory for implementation details
-- **API Reference** ,  TypeScript types in source
-- **Architecture Diagram** ,  See [architecture.mermaid](docs/architecture.mermaid) (if present)
-- **Changelog** ,  [CHANGELOG.md](CHANGELOG.md) (if present)
-- **Contributing** ,  [CONTRIBUTING.md](CONTRIBUTING.md) (if present)
-
-## License
-
-[MIT](LICENSE) ,  Kelvin Oliveira
-
----
-
-<div align="center">
-
-**Built with** · TypeScript + React + Vite + Tailwind
-
-**Author** · [Kelvin Oliveira](https://github.com/KelvinOliveiraCode) · [Portfolio](https://kelvinoliveiracode.github.io/portfolio/)
-
-</div>
+**Author**: [Kelvin Oliveira](https://github.com/KelvinOliveiraCode) · [Portfolio](https://kelvinoliveiracode.github.io/portfolio/)
