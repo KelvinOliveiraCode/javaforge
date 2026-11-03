@@ -83,7 +83,10 @@ export default function Designer() {
       const onMove = (ev: PointerEvent) => {
         const nx = origX + (ev.clientX - startX);
         const ny = origY + (ev.clientY - startY);
-        updateComponent(comp.id, { x: Math.max(0, snap(nx)), y: Math.max(0, snap(ny)) });
+        const s = surfaceRef.current;
+        const maxX = s ? Math.max(0, s.clientWidth - comp.width) : 0;
+        const maxY = s ? Math.max(0, s.clientHeight - comp.height) : 0;
+        updateComponent(comp.id, { x: Math.max(0, Math.min(snap(nx), maxX)), y: Math.max(0, Math.min(snap(ny), maxY)) });
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
@@ -100,9 +103,12 @@ export default function Designer() {
       const w0 = comp.width;
       const h0 = comp.height;
       const onMove = (ev: PointerEvent) => {
+        const s = surfaceRef.current;
+        const maxW = s ? Math.max(24, s.clientWidth - comp.x) : 2048;
+        const maxH = s ? Math.max(16, s.clientHeight - comp.y) : 2048;
         updateComponent(comp.id, {
-          width: Math.max(24, snap(w0 + (ev.clientX - startX))),
-          height: Math.max(16, snap(h0 + (ev.clientY - startY))),
+          width: Math.max(24, Math.min(snap(w0 + (ev.clientX - startX)), maxW)),
+          height: Math.max(16, Math.min(snap(h0 + (ev.clientY - startY)), maxH)),
         });
       };
       const onUp = () => {
@@ -235,7 +241,7 @@ export default function Designer() {
           <div
             ref={surfaceRef}
             className={`win-surface ${dropHint ? "drop-hint" : ""}`}
-            style={{ height: win.height - 26 - (win.menu && win.menu.length > 0 ? 22 : 0) }}
+            style={{ height: Math.max(40, win.height - 26 - (win.menu && win.menu.length > 0 ? 22 : 0)) }}
             onPointerDown={() => store.setState({ selectedComponentId: null })}
           >
             {snapGrid ? <div className="grid-layer" /> : null}
@@ -393,7 +399,7 @@ function renderBody(
     }
     case "JPanel":
       return (
-        <div style={{ position: "absolute", inset: 0 }}>
+        <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
           {comp.props.title ? (
             <span className="dc-label" style={{ position: "absolute", top: 2, left: 6, fontSize: 11 }}>
               {String(comp.props.title)}
@@ -404,7 +410,7 @@ function renderBody(
       );
     case "JScrollPane":
       return (
-        <div style={{ position: "absolute", inset: 2 }}>
+        <div style={{ position: "absolute", inset: 2, overflow: "hidden" }}>
           {kids.map((k) => renderComp(k, comp))}
         </div>
       );

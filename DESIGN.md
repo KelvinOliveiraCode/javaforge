@@ -10,6 +10,14 @@ ENERGY 2 / RHYTHM 1 / MOTION 1.
 
 ## Decisões (com a razão de cada uma)
 
+- **Estrutura do projeto gerado achatada e simples.** O código Java gerado
+  (`Main.java`, `Database.java`, `Schema.java` e as janelas `*Window.java`)
+  fica direto em `src/main/java/`, sem subpastas (não há `com/exemplo/app`,
+  nem `db/` ou `ui/`) e sem declaração de `package`. O foco do JavaForge é
+  ser um GUI builder fácil e lúdico: quem cria o app deve navegar pelas
+  pastas sem se perder. Quanto menos níveis de pasta, mais direto é abrir
+  um arquivo no editor e editar à mão. Isso vale para Maven, Gradle e
+  javac puro.
 - **Um único tema, escuro de alto contraste.** Definido pelo dono do produto.
   Ferramenta de desenvolvimento tem motivo legítimo para escuro: sessões longas,
   menos brilho, e o código gerado (tema VS Code) já vive no escuro. Sem

@@ -423,7 +423,7 @@ fn gradle_test_run_passes() {
 
     // O teste do schema so existe quando ha tabelas.
     assert!(
-        dir.join("src").join("test").join("java").join("com").join("teste").join("app").join("db").join("SchemaTest.java").exists(),
+        dir.join("src").join("test").join("java").join("SchemaTest.java").exists(),
         "SchemaTest nao foi gerado"
     );
     let gradle = fs::read_to_string(dir.join("build.gradle")).unwrap();
@@ -820,10 +820,6 @@ fn project_create_can_replace_existing_folder() {
             .join("src")
             .join("main")
             .join("java")
-            .join("com")
-            .join("teste")
-            .join("app")
-            .join("ui")
             .join("LoginWindow.java")
             .exists(),
         "o codigo Java nao foi gerado"

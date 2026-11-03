@@ -1251,9 +1251,8 @@ textarea.input:focus {
 }
 .dc-label {
   padding: 0 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
   cursor: default;
 }
 .dc-btn {

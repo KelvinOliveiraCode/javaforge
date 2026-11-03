@@ -147,7 +147,7 @@ export default function PropertiesPanel() {
             className="input"
             type="number"
             value={comp.x}
-            onChange={(e) => updateComponent(comp.id, { x: Number(e.target.value) || 0 })}
+            onChange={(e) => updateComponent(comp.id, { x: Math.max(0, Math.min(Number(e.target.value) || 0, 4096)) })}
           />
         </div>
         <div className="field">
@@ -156,7 +156,7 @@ export default function PropertiesPanel() {
             className="input"
             type="number"
             value={comp.y}
-            onChange={(e) => updateComponent(comp.id, { y: Number(e.target.value) || 0 })}
+            onChange={(e) => updateComponent(comp.id, { y: Math.max(0, Math.min(Number(e.target.value) || 0, 4096)) })}
           />
         </div>
         <div className="field">
@@ -165,7 +165,7 @@ export default function PropertiesPanel() {
             className="input"
             type="number"
             value={comp.width}
-            onChange={(e) => updateComponent(comp.id, { width: Number(e.target.value) || 0 })}
+            onChange={(e) => updateComponent(comp.id, { width: Math.max(1, Math.min(Number(e.target.value) || 0, 4096)) })}
           />
         </div>
         <div className="field">
@@ -174,7 +174,7 @@ export default function PropertiesPanel() {
             className="input"
             type="number"
             value={comp.height}
-            onChange={(e) => updateComponent(comp.id, { height: Number(e.target.value) || 0 })}
+            onChange={(e) => updateComponent(comp.id, { height: Math.max(1, Math.min(Number(e.target.value) || 0, 4096)) })}
           />
         </div>
       </div>

@@ -47,7 +47,6 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
         ));
     }
 
-    let pkg_path = pkg_to_path(&model.package_name);
     let mut files: Vec<GeneratedFile> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 
@@ -76,23 +75,23 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
     let plan = plan_database(model, &mut warnings);
 
     files.push(GeneratedFile::text(
-        &format!("src/main/java/{}/Main.java", pkg_path),
-        gen_main(model, &main_class, &class_names),
+        "src/main/java/Main.java",
+        gen_main(model, &main_class),
     ));
     files.push(GeneratedFile::text(
-        &format!("src/main/java/{}/db/Schema.java", pkg_path),
+        "src/main/java/Schema.java",
         gen_schema(model),
     ));
     files.push(GeneratedFile::text(
-        &format!("src/main/java/{}/db/Database.java", pkg_path),
+        "src/main/java/Database.java",
         gen_database(model, &plan),
     ));
     // HashUtil so em projetos com login: em projeto sem auth seria codigo
     // morto que o usuario nunca vai abrir.
     if model.connections.iter().any(|c| c.kind == ConnectionKind::Authenticate) {
         files.push(GeneratedFile::text(
-            &format!("src/main/java/{}/db/HashUtil.java", pkg_path),
-            gen_hash_util(&model.package_name),
+            "src/main/java/HashUtil.java",
+            gen_hash_util(),
         ));
     }
 
@@ -100,13 +99,14 @@ pub fn generate(model: &AppModel) -> Result<Vec<GeneratedFile>, String> {
     // e um teste vazio seria ruido no projeto gerado.
     if !model.database.tables.is_empty() {
         files.push(GeneratedFile::text(
-            &format!("src/test/java/{}/db/SchemaTest.java", pkg_path),
+            "src/test/java/SchemaTest.java",
             gen_schema_test(model),
         ));
     }
     for (idx, win) in model.windows.iter().enumerate() {
+        let path = format!("src/main/java/{}.java", class_names[idx]);
         files.push(GeneratedFile::text(
-            &format!("src/main/java/{}/ui/{}.java", pkg_path, class_names[idx]),
+            &path,
             gen_window(model, win, &class_names, &plan, &mut warnings),
         ));
     }
@@ -363,22 +363,17 @@ fn java_quotes(s: &str) -> String {
 
 // ------------------------------------------------------------- Main / Schema --
 
-fn gen_main(model: &AppModel, main_class: &str, class_names: &[String]) -> String {
-    let pkg = &model.package_name;
-    let mut imports = format!("import {}.db.Database;", pkg);
-    for cls in class_names {
-        imports.push_str(&format!("\nimport {}.ui.{};", pkg, cls));
-    }
+fn gen_main(model: &AppModel, main_class: &str) -> String {
+    // Sem declaracao de package: os arquivos Java gerados ficam direto em
+    // src/main/java/. Nenhum import entre classes do proprio projeto e
+    // necessario porque todas vivem no mesmo diretorio.
     // FlatLaf deixa o app com cara de aplicativo moderno em vez do Metal.
-    // O fallback para o L&F do sistema é obrigatório: no caminho javac puro
-    // o jar pode não estar no classpath, e uma exceção aqui impediria a
+    // O fallback para o L&F do sistema e obrigatorio: no caminho javac puro
+    // o jar pode nao estar no classpath, e uma excecao aqui impediria a
     // janela de abrir.
     format!(
-        r#"package {pkg};
-
-import javax.swing.SwingUtilities;
+        r#"import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
-{imports}
 
 public final class Main {{
 
@@ -426,9 +421,7 @@ public final class Main {{
     }}
 }}
 "#,
-        pkg = pkg,
         cls = main_class,
-        imports = imports,
         tema = model.theme
     )
 }
@@ -551,9 +544,7 @@ fn gen_schema(model: &AppModel) -> String {
     };
 
     format!(
-        r#"package {pkg}.db;
-
-public final class Schema {{
+        r#"public final class Schema {{
 
     private Schema() {{
     }}
@@ -567,7 +558,6 @@ public final class Schema {{
     }};
 }}
 "#,
-        pkg = model.package_name,
         ddl = ddl_body,
         seed = seed_body
     )
@@ -1051,11 +1041,9 @@ fn unique(used: &mut Vec<String>, base: String) -> String {
  * ele ensina exatamente o que nao fazer. Esta classe faz PBKDF2 so com o
  * JDK (javax.crypto), sem dependencia nova, e o template passa a usa-la.
  */
-fn gen_hash_util(pkg: &str) -> String {
+fn gen_hash_util() -> String {
     format!(
-        r#"package {pkg}.db;
-
-import java.security.NoSuchAlgorithmException;
+        r#"import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
@@ -1112,8 +1100,7 @@ public final class HashUtil {{
         return hash(senha, saltBase64).equals(hashGuardado);
     }}
 }}
-"#,
-        pkg = pkg
+"#
     )
 }
 
@@ -1136,9 +1123,7 @@ fn gen_database(model: &AppModel, plan: &[DbMethod]) -> String {
     }
 
     format!(
-        r#"package {pkg}.db;
-
-{imports}
+        r#"{imports}
 
 public final class Database {{
 
@@ -1198,7 +1183,6 @@ public final class Database {{
 {methods}
 }}
 "#,
-        pkg = model.package_name,
         imports = imports,
         db = model.database.file,
         methods = methods_code
@@ -1214,7 +1198,6 @@ public final class Database {{
  * o teste dizer algo util sobre o que o usuario vai rodar.
  */
 fn gen_schema_test(model: &AppModel) -> String {
-    let pkg = &model.package_name;
     let mut checks = String::new();
     for table in &model.database.tables {
         // Cada coluna vira um argumento separado: "esperarColuna("t","a","b")".
@@ -1232,9 +1215,7 @@ fn gen_schema_test(model: &AppModel) -> String {
         ));
     }
     format!(
-        r#"package {pkg}.db;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
+        r#"import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -1323,7 +1304,6 @@ class SchemaTest {{
 {checks}    }}
 }}
 "#,
-        pkg = pkg,
         checks = checks
     )
 }
@@ -1653,10 +1633,11 @@ fn gen_window(
     });
     if !conns.is_empty() {
         push_import(&mut imports, "javax.swing.JOptionPane");
-        // as telas vivem em <pacote>.ui; o acesso ao banco em <pacote>.db
-        push_import(&mut imports, &format!("{}.db.Database", model.package_name));
+        // Main, Database, Schema e as janelas geram tudo no mesmo pacote:
+        // nenhum import entre classes do proprio projeto e necessario.
     }
-    // as telas vivem em <pacote>.ui e enxergam as outras telas sem import
+    // Main, Database, Schema e as janelas geram tudo no mesmo pacote:
+    // nenhum import entre classes do proprio projeto e necessario.
     if needs_sql {
         push_import(&mut imports, "java.sql.SQLException");
     }
@@ -1738,9 +1719,7 @@ fn gen_window(
         .unwrap_or_else(|| "JanelaWindow".to_string());
 
     format!(
-        r#"package {pkg}.ui;
-
-{imports}
+        r#"{imports}
 
 public class {cls} extends JFrame {{
 
@@ -1764,7 +1743,6 @@ public class {cls} extends JFrame {{
 {methods}
 }}
 "#,
-        pkg = model.package_name,
         imports = imports
             .iter()
             .map(|i| format!("import {};", i))
@@ -2303,9 +2281,9 @@ Para gerar o JAR executável:
 ## Estrutura
 
 - `src/main/java/.../Main.java` - ponto de entrada
-- `src/main/java/.../db/Database.java` - acesso ao SQLite e métodos das conexões
-- `src/main/java/.../db/Schema.java` - criação das tabelas e dados iniciais
-- `src/main/java/.../ui/*Window.java` - telas (janelas Swing)
+- `src/main/java/.../Database.java` - acesso ao SQLite e métodos das conexões
+- `src/main/java/.../Schema.java` - criação das tabelas e dados iniciais
+- `src/main/java/.../*Window.java` - telas (janelas Swing)
 - `data/{db}` - banco de dados SQLite, criado automaticamente no primeiro uso
 - `build/` - pasta de trabalho do JavaForge (driver, ferramentas e classes geradas)
 - `app.model.json` - modelo visual usado pelo JavaForge (janelas, componentes e conexões)
